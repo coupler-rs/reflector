@@ -1,4 +1,4 @@
-use window::{Application, MouseButton, Point, Rect, Window, WindowHandler, WindowOptions};
+use portlight::{Application, MouseButton, Point, Rect, Window, WindowHandler, WindowOptions};
 
 struct Handler;
 
