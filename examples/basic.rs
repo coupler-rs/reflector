@@ -1,74 +1,33 @@
-use portlight::{Application, MouseButton, Point, Rect, Window, WindowHandler, WindowOptions};
+use std::error::Error;
 
-struct Handler;
+use portlight::{App, AppContext, Event, Response, Size, Window, WindowOptions};
 
-impl WindowHandler for Handler {
-    fn create(&self, _window: &Window) {
-        println!("create");
-    }
-
-    fn frame(&self, _window: &Window) {
-        println!("frame");
-    }
-
-    fn display(&self, window: &Window) {
-        println!("display");
-        window.update_contents(&[0xFFFF00FF; 1920 * 1920], 1920, 1920);
-    }
-
-    fn mouse_move(&self, _window: &Window, position: Point) {
-        println!("mouse move: {:?}", position);
-    }
-
-    fn mouse_down(&self, _window: &Window, button: MouseButton) -> bool {
-        println!("mouse down: {:?}", button);
-        false
-    }
-
-    fn mouse_up(&self, _window: &Window, button: MouseButton) -> bool {
-        println!("mouse up: {:?}", button);
-        false
-    }
-
-    fn scroll(&self, _window: &Window, dx: f64, dy: f64) -> bool {
-        println!("scroll: {}, {}", dx, dy);
-        false
-    }
-
-    fn request_close(&self, window: &Window) {
-        window.close().unwrap();
-    }
-
-    fn destroy(&self, window: &Window) {
-        println!("destroy");
-        window.application().stop();
-    }
+struct State {
+    _window: Window,
 }
 
-impl Drop for Handler {
-    fn drop(&mut self) {
-        println!("drop");
+impl State {
+    fn handle_event(&mut self, cx: &AppContext<Self>, event: Event) -> Response {
+        match event {
+            Event::RequestClose => {
+                cx.exit();
+                Response::Capture
+            }
+            _ => Response::Ignore,
+        }
     }
 }
 
 fn main() {
-    let app = Application::new().unwrap();
+    App::new(|cx| {
+        let window = WindowOptions::new()
+            .title("window")
+            .size(Size::new(640.0, 480.0))
+            .open(cx, State::handle_event)
+            .unwrap();
 
-    Window::open(
-        &app,
-        WindowOptions {
-            title: "window".to_string(),
-            rect: Rect {
-                x: 0.0,
-                y: 0.0,
-                width: 500.0,
-                height: 500.0,
-            },
-            handler: Box::new(Handler),
-            ..WindowOptions::default()
-        },
-    )
-    .unwrap();
-
-    app.start().unwrap();
+        Ok(State { _window: window })
+    })
+    .unwrap()
+    .run();
 }

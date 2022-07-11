@@ -13,75 +13,110 @@ mod x11;
 #[cfg(target_os = "linux")]
 use x11 as platform;
 
-use std::error::Error;
-use std::fmt;
+use std::ffi::{OsStr, OsString};
 use std::marker::PhantomData;
+use std::{error, fmt, result};
 
-use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
+pub type Result<T> = result::Result<T, Error>;
 
 #[derive(Debug)]
-pub struct ApplicationError(platform::ApplicationError);
+pub enum Error {
+    Os(platform::OsError),
+}
 
-impl fmt::Display for ApplicationError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.0.fmt(f)
+impl error::Error for Error {}
+
+impl fmt::Display for Error {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Error::Os(err) => write!(fmt, "os error: {}", err),
+        }
     }
 }
 
-impl Error for ApplicationError {}
-
-#[derive(Clone)]
-pub struct Application {
-    application: platform::Application,
-    // ensure that Application is !Send on all platforms
+pub struct App<T> {
+    inner: platform::AppInner<T>,
+    // ensure !Send and !Sync on all platforms
     phantom: PhantomData<*mut ()>,
 }
 
-impl Application {
-    pub fn new() -> Result<Application, ApplicationError> {
-        match platform::Application::new() {
-            Ok(application) => Ok(Application {
-                application,
-                phantom: PhantomData,
-            }),
-            Err(error) => Err(ApplicationError(error)),
-        }
+impl<T> App<T> {
+    pub fn new<F>(build: F) -> Result<App<T>>
+    where
+        F: FnOnce(&AppContext<T>) -> Result<T>,
+        T: 'static,
+    {
+        Ok(App {
+            inner: platform::AppInner::new(build)?,
+            phantom: PhantomData,
+        })
     }
 
-    pub fn start(&self) -> Result<(), ApplicationError> {
-        match self.application.start() {
-            Ok(()) => Ok(()),
-            Err(error) => Err(ApplicationError(error)),
-        }
+    pub fn run(&mut self) {
+        self.inner.run();
     }
 
-    pub fn stop(&self) {
-        self.application.stop();
-    }
-
-    pub fn poll(&self) {
-        self.application.poll();
-    }
-
-    #[cfg(target_os = "linux")]
-    pub fn file_descriptor(&self) -> std::os::raw::c_int {
-        self.application.file_descriptor()
+    pub fn poll(&mut self) {
+        self.inner.poll();
     }
 }
 
-pub enum Parent<'p> {
-    None,
-    Parent(&'p dyn HasRawWindowHandle),
-    Detached,
+impl<T> fmt::Debug for App<T> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("App").finish_non_exhaustive()
+    }
 }
 
-#[derive(Copy, Clone, Debug)]
+pub struct AppContext<T> {
+    inner: platform::AppContextInner<T>,
+    // ensure !Send and !Sync on all platforms
+    phantom: PhantomData<*mut ()>,
+}
+
+impl<T> AppContext<T> {
+    fn from_inner(inner: platform::AppContextInner<T>) -> AppContext<T> {
+        AppContext {
+            inner,
+            phantom: PhantomData,
+        }
+    }
+
+    pub fn exit(&self) {
+        self.inner.exit();
+    }
+}
+
+impl<T> fmt::Debug for AppContext<T> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("AppContext").finish_non_exhaustive()
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Point {
     pub x: f64,
     pub y: f64,
 }
 
-#[derive(Copy, Clone, Debug)]
+impl Point {
+    pub fn new(x: f64, y: f64) -> Point {
+        Point { x, y }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct Size {
+    pub width: f64,
+    pub height: f64,
+}
+
+impl Size {
+    pub fn new(width: f64, height: f64) -> Size {
+        Size { width, height }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Rect {
     pub x: f64,
     pub y: f64,
@@ -89,7 +124,18 @@ pub struct Rect {
     pub height: f64,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+impl Rect {
+    pub fn new(x: f64, y: f64, width: f64, height: f64) -> Rect {
+        Rect {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum MouseButton {
     Left,
     Middle,
@@ -113,112 +159,90 @@ pub enum Cursor {
     None,
 }
 
-#[allow(unused_variables)]
-pub trait WindowHandler {
-    fn create(&self, window: &Window) {}
-    fn frame(&self, window: &Window) {}
-    fn display(&self, window: &Window) {}
-    fn mouse_move(&self, window: &Window, position: Point) {}
-    fn mouse_down(&self, window: &Window, button: MouseButton) -> bool {
-        false
-    }
-    fn mouse_up(&self, window: &Window, button: MouseButton) -> bool {
-        false
-    }
-    fn scroll(&self, window: &Window, dx: f64, dy: f64) -> bool {
-        false
-    }
-    fn request_close(&self, window: &Window) {}
-    fn destroy(&self, window: &Window) {}
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Event {
+    Frame,
+    Display,
+    RequestClose,
+    MouseMove(Point),
+    MouseDown(MouseButton),
+    MouseUp(MouseButton),
+    Scroll(Point),
 }
 
-struct DefaultWindowHandler;
-
-impl WindowHandler for DefaultWindowHandler {}
-
-pub struct WindowOptions<'p> {
-    pub title: String,
-    pub rect: Rect,
-    pub parent: Parent<'p>,
-    pub handler: Box<dyn WindowHandler>,
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum Response {
+    Capture,
+    Ignore,
 }
 
-impl<'p> Default for WindowOptions<'p> {
+#[derive(Clone, Debug)]
+pub struct WindowOptions {
+    title: OsString,
+    rect: Rect,
+}
+
+impl Default for WindowOptions {
     fn default() -> Self {
         WindowOptions {
-            title: "".to_string(),
+            title: OsString::new(),
             rect: Rect {
                 x: 0.0,
                 y: 0.0,
                 width: 0.0,
                 height: 0.0,
             },
-            parent: Parent::None,
-            handler: Box::new(DefaultWindowHandler),
         }
     }
 }
 
-#[derive(Debug)]
-pub struct WindowError(platform::WindowError);
+impl WindowOptions {
+    pub fn new() -> WindowOptions {
+        Self::default()
+    }
 
-impl fmt::Display for WindowError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.0.fmt(f)
+    pub fn title<S: AsRef<OsStr>>(&mut self, title: S) -> &mut Self {
+        self.title = title.as_ref().to_os_string();
+        self
+    }
+
+    pub fn rect(&mut self, rect: Rect) -> &mut Self {
+        self.rect = rect;
+        self
+    }
+
+    pub fn position(&mut self, point: Point) -> &mut Self {
+        self.rect.x = point.x;
+        self.rect.y = point.y;
+        self
+    }
+
+    pub fn size(&mut self, size: Size) -> &mut Self {
+        self.rect.width = size.width;
+        self.rect.height = size.height;
+        self
+    }
+
+    pub fn open<T, H>(&self, cx: &AppContext<T>, handler: H) -> Result<Window>
+    where
+        H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
+        H: 'static,
+    {
+        Ok(Window {
+            inner: platform::WindowInner::open(self, cx, handler)?,
+            phantom: PhantomData,
+        })
     }
 }
 
-impl Error for WindowError {}
-
-#[derive(Clone)]
 pub struct Window {
-    window: platform::Window,
-    // ensure that Window is !Send on all platforms
+    inner: platform::WindowInner,
+    // ensure !Send and !Sync on all platforms
     phantom: PhantomData<*mut ()>,
 }
 
-impl Window {
-    pub fn open(application: &Application, options: WindowOptions) -> Result<Window, WindowError> {
-        match platform::Window::open(&application, options) {
-            Ok(window) => Ok(window),
-            Err(error) => Err(WindowError(error)),
-        }
-    }
-
-    pub fn request_display(&self) {
-        self.window.request_display();
-    }
-
-    pub fn request_display_rect(&self, rect: Rect) {
-        self.window.request_display_rect(rect);
-    }
-
-    pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {
-        self.window.update_contents(framebuffer, width, height);
-    }
-
-    pub fn set_cursor(&self, cursor: Cursor) {
-        self.window.set_cursor(cursor);
-    }
-
-    pub fn set_mouse_position(&self, position: Point) {
-        self.window.set_mouse_position(position);
-    }
-
-    pub fn close(&self) -> Result<(), WindowError> {
-        match self.window.close() {
-            Ok(()) => Ok(()),
-            Err(error) => Err(WindowError(error)),
-        }
-    }
-
-    pub fn application(&self) -> &Application {
-        self.window.application()
-    }
-}
-
-unsafe impl HasRawWindowHandle for Window {
-    fn raw_window_handle(&self) -> RawWindowHandle {
-        self.window.raw_window_handle()
+impl fmt::Debug for Window {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("Window").finish_non_exhaustive()
     }
 }
