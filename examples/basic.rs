@@ -1,5 +1,3 @@
-use std::error::Error;
-
 use portlight::{App, AppContext, Event, Response, Size, Window, WindowOptions};
 
 struct State {
