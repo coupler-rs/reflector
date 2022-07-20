@@ -13,7 +13,7 @@ impl fmt::Display for OsError {
 }
 
 pub struct AppInner<T> {
-    pub state: T,
+    state: T,
 }
 
 impl<T> AppInner<T> {
