@@ -1,8 +1,9 @@
 use crate::{AppContext, Error, Event, Response, Result, WindowOptions};
 
+use std::cell::RefCell;
 use std::ffi::OsStr;
-use std::marker::PhantomData;
 use std::os::windows::ffi::OsStrExt;
+use std::rc::Rc;
 use std::{fmt, ptr};
 
 use winapi::{
@@ -30,9 +31,24 @@ impl fmt::Display for OsError {
     }
 }
 
-pub struct AppInner<T> {
+struct AppState<T> {
     class: minwindef::ATOM,
-    state: T,
+    data: RefCell<Option<T>>,
+}
+
+impl<T> Drop for AppState<T> {
+    fn drop(&mut self) {
+        unsafe {
+            winuser::UnregisterClassW(
+                self.class as *const ntdef::WCHAR,
+                &__ImageBase as *const winnt::IMAGE_DOS_HEADER as minwindef::HINSTANCE,
+            );
+        }
+    }
+}
+
+pub struct AppInner<T> {
+    state: Rc<AppState<T>>,
 }
 
 impl<T> AppInner<T> {
@@ -67,11 +83,17 @@ impl<T> AppInner<T> {
             class
         };
 
-        let cx = AppContext::from_inner(AppContextInner {
-            phantom: PhantomData,
+        let state = Rc::new(AppState {
+            class,
+            data: RefCell::new(None),
         });
 
-        Ok(AppInner { class, state: build(&cx)? })
+        let cx = AppContext::from_inner(AppContextInner { state: &state });
+        let data = build(&cx)?;
+
+        state.data.replace(Some(data));
+
+        Ok(AppInner { state })
     }
 
     pub fn run(&self) {}
@@ -81,17 +103,12 @@ impl<T> AppInner<T> {
 
 impl<T> Drop for AppInner<T> {
     fn drop(&mut self) {
-        unsafe {
-            winuser::UnregisterClassW(
-                self.class as *const ntdef::WCHAR,
-                &__ImageBase as *const winnt::IMAGE_DOS_HEADER as minwindef::HINSTANCE,
-            );
-        }
+        drop(self.state.data.take());
     }
 }
 
 pub struct AppContextInner<'a, T> {
-    phantom: PhantomData<&'a T>,
+    state: &'a Rc<AppState<T>>,
 }
 
 impl<'a, T> AppContextInner<'a, T> {
