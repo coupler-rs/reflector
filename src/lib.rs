@@ -67,13 +67,13 @@ impl<T> fmt::Debug for App<T> {
     }
 }
 
-pub struct AppContext<T> {
-    inner: platform::AppContextInner<T>,
+pub struct AppContext<'a, T> {
+    inner: platform::AppContextInner<'a, T>,
     // ensure !Send and !Sync on all platforms
     phantom: PhantomData<*mut ()>,
 }
 
-impl<T> AppContext<T> {
+impl<'a, T> AppContext<'a, T> {
     fn from_inner(inner: platform::AppContextInner<T>) -> AppContext<T> {
         AppContext {
             inner,
@@ -86,7 +86,7 @@ impl<T> AppContext<T> {
     }
 }
 
-impl<T> fmt::Debug for AppContext<T> {
+impl<'a, T> fmt::Debug for AppContext<'a, T> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("AppContext").finish_non_exhaustive()
     }

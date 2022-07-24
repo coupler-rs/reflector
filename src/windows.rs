@@ -90,11 +90,11 @@ impl<T> Drop for AppInner<T> {
     }
 }
 
-pub struct AppContextInner<T> {
-    phantom: PhantomData<T>,
+pub struct AppContextInner<'a, T> {
+    phantom: PhantomData<&'a T>,
 }
 
-impl<T> AppContextInner<T> {
+impl<'a, T> AppContextInner<'a, T> {
     pub fn exit(&self) {}
 }
 
