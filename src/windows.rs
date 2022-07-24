@@ -62,7 +62,7 @@ impl<T> AppInner<T> {
 
             let wnd_class = winuser::WNDCLASSW {
                 style: winuser::CS_HREDRAW | winuser::CS_VREDRAW | winuser::CS_OWNDC,
-                lpfnWndProc: Some(wnd_proc),
+                lpfnWndProc: Some(wnd_proc::<T>),
                 cbClsExtra: 0,
                 cbWndExtra: 0,
                 hInstance: &__ImageBase as *const winnt::IMAGE_DOS_HEADER as minwindef::HINSTANCE,
@@ -115,27 +115,89 @@ impl<'a, T> AppContextInner<'a, T> {
     pub fn exit(&self) {}
 }
 
-pub struct WindowInner {}
+struct WindowState<T> {
+    state: Rc<AppState<T>>,
+    handler: Box<dyn FnMut(&mut T, &AppContext<T>, Event) -> Response>,
+}
+
+pub struct WindowInner {
+    hwnd: windef::HWND,
+}
 
 impl WindowInner {
     pub fn open<T, H>(
-        _options: &WindowOptions,
-        _cx: &AppContext<T>,
-        _handler: H,
+        options: &WindowOptions,
+        cx: &AppContext<T>,
+        handler: H,
     ) -> Result<WindowInner>
     where
         H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
         H: 'static,
     {
-        Ok(WindowInner {})
+        let hwnd = unsafe {
+            let flags = winuser::WS_CLIPCHILDREN
+                | winuser::WS_CLIPSIBLINGS
+                | winuser::WS_CAPTION
+                | winuser::WS_SIZEBOX
+                | winuser::WS_SYSMENU
+                | winuser::WS_MINIMIZEBOX
+                | winuser::WS_MAXIMIZEBOX;
+
+            let mut rect = windef::RECT {
+                left: options.rect.x.round() as i32,
+                top: options.rect.y.round() as i32,
+                right: (options.rect.x + options.rect.width).round() as i32,
+                bottom: (options.rect.y + options.rect.height).round() as i32,
+            };
+            winuser::AdjustWindowRectEx(&mut rect, flags, minwindef::FALSE, 0);
+
+            let window_name = to_wstring(&options.title);
+
+            let hwnd = winuser::CreateWindowExW(
+                0,
+                cx.inner.state.class as *const ntdef::WCHAR,
+                window_name.as_ptr(),
+                flags,
+                winuser::CW_USEDEFAULT,
+                winuser::CW_USEDEFAULT,
+                rect.right - rect.left,
+                rect.bottom - rect.top,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+            if hwnd.is_null() {
+                return Err(Error::Os(OsError {
+                    code: errhandlingapi::GetLastError(),
+                }));
+            }
+
+            let state = Box::into_raw(Box::new(WindowState {
+                state: Rc::clone(cx.inner.state),
+                handler: Box::new(handler),
+            }));
+
+            winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, state as isize);
+
+            winuser::ShowWindow(hwnd, winuser::SW_SHOWNORMAL);
+            winuser::UpdateWindow(hwnd);
+
+            hwnd
+        };
+
+        Ok(WindowInner { hwnd })
     }
 }
 
-unsafe extern "system" fn wnd_proc(
+unsafe extern "system" fn wnd_proc<T>(
     hwnd: windef::HWND,
     msg: minwindef::UINT,
     wparam: minwindef::WPARAM,
     lparam: minwindef::LPARAM,
 ) -> minwindef::LRESULT {
+    let state_ptr = winuser::GetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA) as *mut WindowState<T>;
+    if !state_ptr.is_null() {}
+
     winuser::DefWindowProcW(hwnd, msg, wparam, lparam)
 }
