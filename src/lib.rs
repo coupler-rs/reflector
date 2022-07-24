@@ -22,6 +22,7 @@ pub type Result<T> = result::Result<T, Error>;
 #[derive(Debug)]
 pub enum Error {
     Os(platform::OsError),
+    InsideEventHandler,
 }
 
 impl error::Error for Error {}
@@ -30,6 +31,9 @@ impl fmt::Display for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::Os(err) => write!(fmt, "os error: {}", err),
+            Error::InsideEventHandler => {
+                write!(fmt, "operation not supported inside an event handler")
+            }
         }
     }
 }
