@@ -27,5 +27,6 @@ fn main() {
         Ok(State { _window: window })
     })
     .unwrap()
-    .run();
+    .run()
+    .unwrap();
 }

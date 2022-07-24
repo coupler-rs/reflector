@@ -52,12 +52,12 @@ impl<T> App<T> {
         })
     }
 
-    pub fn run(&mut self) {
-        self.inner.run();
+    pub fn run(&mut self) -> Result<()> {
+        self.inner.run()
     }
 
-    pub fn poll(&mut self) {
-        self.inner.poll();
+    pub fn poll(&mut self) -> Result<()> {
+        self.inner.poll()
     }
 }
 

@@ -29,9 +29,13 @@ impl<T> AppInner<T> {
         Ok(AppInner { state: build(&cx)? })
     }
 
-    pub fn run(&self) {}
+    pub fn run(&self) -> Result<()> {
+        Ok(())
+    }
 
-    pub fn poll(&self) {}
+    pub fn poll(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 pub struct AppContextInner<'a, T> {

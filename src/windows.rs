@@ -96,9 +96,13 @@ impl<T> AppInner<T> {
         Ok(AppInner { state })
     }
 
-    pub fn run(&self) {}
+    pub fn run(&self) -> Result<()> {
+        Ok(())
+    }
 
-    pub fn poll(&self) {}
+    pub fn poll(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 impl<T> Drop for AppInner<T> {
