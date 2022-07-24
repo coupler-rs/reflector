@@ -1,10 +1,10 @@
 use crate::{AppContext, Error, Event, Response, Result, WindowOptions};
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::rc::Rc;
-use std::{fmt, ptr};
+use std::{fmt, mem, ptr};
 
 use winapi::{
     shared::minwindef, shared::ntdef, shared::windef, um::errhandlingapi, um::winnt, um::winuser,
@@ -33,6 +33,7 @@ impl fmt::Display for OsError {
 
 struct AppState<T> {
     class: minwindef::ATOM,
+    running: Cell<bool>,
     data: RefCell<Option<T>>,
 }
 
@@ -85,6 +86,7 @@ impl<T> AppInner<T> {
 
         let state = Rc::new(AppState {
             class,
+            running: Cell::new(false),
             data: RefCell::new(None),
         });
 
@@ -97,6 +99,30 @@ impl<T> AppInner<T> {
     }
 
     pub fn run(&self) -> Result<()> {
+        if self.state.running.get() || self.state.data.try_borrow().is_err() {
+            return Err(Error::InsideEventHandler);
+        }
+
+        self.state.running.set(true);
+        while self.state.running.get() {
+            unsafe {
+                let mut msg: winuser::MSG = mem::zeroed();
+
+                let result = winuser::GetMessageW(&mut msg, ptr::null_mut(), 0, 0);
+                if result < 0 {
+                    return Err(Error::Os(OsError {
+                        code: errhandlingapi::GetLastError(),
+                    }));
+                } else if result == 0 {
+                    // ignore WM_QUIT messages
+                    continue;
+                }
+
+                winuser::TranslateMessage(&msg);
+                winuser::DispatchMessageW(&msg);
+            }
+        }
+
         Ok(())
     }
 
@@ -116,7 +142,9 @@ pub struct AppContextInner<'a, T> {
 }
 
 impl<'a, T> AppContextInner<'a, T> {
-    pub fn exit(&self) {}
+    pub fn exit(&self) {
+        self.state.running.set(false);
+    }
 }
 
 struct WindowState<T> {
