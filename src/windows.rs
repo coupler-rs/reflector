@@ -13,8 +13,8 @@ extern "C" {
     static __ImageBase: winnt::IMAGE_DOS_HEADER;
 }
 
-fn to_wstring(str: &str) -> Vec<ntdef::WCHAR> {
-    let mut wstr: Vec<ntdef::WCHAR> = OsStr::new(str).encode_wide().collect();
+fn to_wstring<S: AsRef<OsStr> + ?Sized>(str: &S) -> Vec<ntdef::WCHAR> {
+    let mut wstr: Vec<ntdef::WCHAR> = str.as_ref().encode_wide().collect();
     wstr.push(0);
     wstr
 }
