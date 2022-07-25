@@ -16,6 +16,9 @@ impl State {
             Event::Frame => {
                 println!("frame");
             }
+            Event::Display => {
+                println!("display");
+            }
             Event::MouseMove(pos) => {
                 println!("mouse move: {:?}", pos);
             }
@@ -34,7 +37,6 @@ impl State {
             Event::RequestClose => {
                 cx.exit();
             }
-            _ => {}
         }
 
         Response::Ignore

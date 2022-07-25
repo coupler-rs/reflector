@@ -167,11 +167,11 @@ pub enum Cursor {
 pub enum Event {
     Frame,
     Display,
-    RequestClose,
     MouseMove(Point),
     MouseDown(MouseButton),
     MouseUp(MouseButton),
     Scroll(Point),
+    RequestClose,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]

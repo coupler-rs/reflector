@@ -151,6 +151,7 @@ impl<'a, T> AppContextInner<'a, T> {
 }
 
 struct WindowState<T> {
+    hdc: Cell<Option<windef::HDC>>,
     mouse_down_count: Cell<isize>,
     app_state: Rc<AppState<T>>,
     handler: RefCell<Box<dyn FnMut(&mut T, &AppContext<T>, Event) -> Response>>,
@@ -230,6 +231,7 @@ impl WindowInner {
             }
 
             let state = Rc::into_raw(Rc::new(WindowState {
+                hdc: Cell::new(None),
                 mouse_down_count: Cell::new(0),
                 app_state: Rc::clone(cx.inner.state),
                 handler: RefCell::new(Box::new(handler)),
@@ -240,7 +242,6 @@ impl WindowInner {
             winuser::SetTimer(hwnd, TIMER_ID, TIMER_INTERVAL, None);
 
             winuser::ShowWindow(hwnd, winuser::SW_SHOWNORMAL);
-            winuser::UpdateWindow(hwnd);
 
             hwnd
         };
@@ -274,6 +275,23 @@ unsafe extern "system" fn wnd_proc<T>(
                 if wparam == TIMER_ID {
                     state.handle_event(Event::Frame);
                 }
+                return 0;
+            }
+            winuser::WM_ERASEBKGND => {
+                return 1;
+            }
+            winuser::WM_PAINT => {
+                let mut paint_struct: winuser::PAINTSTRUCT = mem::zeroed();
+                let hdc = winuser::BeginPaint(hwnd, &mut paint_struct);
+                if !hdc.is_null() {
+                    state.hdc.set(Some(hdc));
+                }
+
+                state.handle_event(Event::Display);
+
+                state.hdc.set(None);
+                winuser::EndPaint(hwnd, &paint_struct);
+
                 return 0;
             }
             winuser::WM_MOUSEMOVE => {
@@ -354,9 +372,6 @@ unsafe extern "system" fn wnd_proc<T>(
                 if state.handle_event(Event::Scroll(point)) == Some(Response::Capture) {
                     return 0;
                 }
-            }
-            winuser::WM_ERASEBKGND => {
-                return 1;
             }
             winuser::WM_CLOSE => {
                 state.handle_event(Event::RequestClose);
