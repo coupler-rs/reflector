@@ -332,6 +332,18 @@ unsafe extern "system" fn wnd_proc<T>(
                     }
                 }
             }
+            winuser::WM_MOUSEWHEEL | winuser::WM_MOUSEHWHEEL => {
+                let delta = winuser::GET_WHEEL_DELTA_WPARAM(wparam) as f64 / 120.0;
+                let point = match msg {
+                    winuser::WM_MOUSEWHEEL => Point::new(0.0, delta),
+                    winuser::WM_MOUSEHWHEEL => Point::new(delta, 0.0),
+                    _ => unreachable!(),
+                };
+
+                if state.handle_event(Event::Scroll(point)) == Some(Response::Capture) {
+                    return 0;
+                }
+            }
             winuser::WM_ERASEBKGND => {
                 return 1;
             }

@@ -24,6 +24,10 @@ impl State {
                 println!("mouse up: {:?}", btn);
                 return Response::Capture;
             }
+            Event::Scroll(delta) => {
+                println!("scroll: {:?}", delta);
+                return Response::Capture;
+            }
             Event::RequestClose => {
                 cx.exit();
             }
