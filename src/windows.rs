@@ -148,8 +148,25 @@ impl<'a, T> AppContextInner<'a, T> {
 }
 
 struct WindowState<T> {
-    state: Rc<AppState<T>>,
-    handler: Box<dyn FnMut(&mut T, &AppContext<T>, Event) -> Response>,
+    app_state: Rc<AppState<T>>,
+    handler: RefCell<Box<dyn FnMut(&mut T, &AppContext<T>, Event) -> Response>>,
+}
+
+impl<T> WindowState<T> {
+    fn handle_event(&self, event: Event) -> Option<Response> {
+        if let Ok(mut handler) = self.handler.try_borrow_mut() {
+            if let Ok(mut data) = self.app_state.data.try_borrow_mut() {
+                if let Some(data) = data.as_mut() {
+                    let cx = AppContext::from_inner(AppContextInner {
+                        state: &self.app_state,
+                    });
+                    return Some(handler(data, &cx, event));
+                }
+            }
+        }
+
+        None
+    }
 }
 
 pub struct WindowInner {
@@ -206,8 +223,8 @@ impl WindowInner {
             }
 
             let state = Box::into_raw(Box::new(WindowState {
-                state: Rc::clone(cx.inner.state),
-                handler: Box::new(handler),
+                app_state: Rc::clone(cx.inner.state),
+                handler: RefCell::new(Box::new(handler)),
             }));
 
             winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, state as isize);
@@ -229,7 +246,17 @@ unsafe extern "system" fn wnd_proc<T>(
     lparam: minwindef::LPARAM,
 ) -> minwindef::LRESULT {
     let state_ptr = winuser::GetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA) as *mut WindowState<T>;
-    if !state_ptr.is_null() {}
+    if !state_ptr.is_null() {
+        let state = &*state_ptr;
+
+        match msg {
+            winuser::WM_CLOSE => {
+                state.handle_event(Event::RequestClose);
+                return 0;
+            }
+            _ => {}
+        }
+    }
 
     winuser::DefWindowProcW(hwnd, msg, wparam, lparam)
 }
