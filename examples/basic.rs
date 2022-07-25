@@ -13,6 +13,9 @@ impl Drop for State {
 impl State {
     fn handle_event(&mut self, cx: &AppContext<Self>, event: Event) -> Response {
         match event {
+            Event::Frame => {
+                println!("frame");
+            }
             Event::MouseMove(pos) => {
                 println!("mouse move: {:?}", pos);
             }

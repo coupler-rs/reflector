@@ -173,6 +173,9 @@ impl<T> WindowState<T> {
     }
 }
 
+const TIMER_ID: usize = 1;
+const TIMER_INTERVAL: u32 = 16;
+
 pub struct WindowInner {
     hwnd: windef::HWND,
 }
@@ -234,6 +237,8 @@ impl WindowInner {
 
             winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, state as isize);
 
+            winuser::SetTimer(hwnd, TIMER_ID, TIMER_INTERVAL, None);
+
             winuser::ShowWindow(hwnd, winuser::SW_SHOWNORMAL);
             winuser::UpdateWindow(hwnd);
 
@@ -265,6 +270,12 @@ unsafe extern "system" fn wnd_proc<T>(
         let _ = Rc::into_raw(state_rc);
 
         match msg {
+            winuser::WM_TIMER => {
+                if wparam == TIMER_ID {
+                    state.handle_event(Event::Frame);
+                }
+                return 0;
+            }
             winuser::WM_MOUSEMOVE => {
                 let point = Point {
                     x: windowsx::GET_X_LPARAM(lparam) as f64,
@@ -352,8 +363,11 @@ unsafe extern "system" fn wnd_proc<T>(
                 return 0;
             }
             winuser::WM_DESTROY => {
+                winuser::KillTimer(hwnd, TIMER_ID);
+
                 drop(Rc::from_raw(state_ptr));
                 winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, 0);
+
                 return 0;
             }
             _ => {}
