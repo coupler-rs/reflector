@@ -262,6 +262,9 @@ unsafe extern "system" fn wnd_proc<T>(
         let _ = Rc::into_raw(state_rc);
 
         match msg {
+            winuser::WM_ERASEBKGND => {
+                return 1;
+            }
             winuser::WM_CLOSE => {
                 state.handle_event(Event::RequestClose);
                 return 0;
