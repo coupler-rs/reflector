@@ -268,6 +268,7 @@ unsafe extern "system" fn wnd_proc<T>(
             }
             winuser::WM_DESTROY => {
                 drop(Rc::from_raw(state_ptr));
+                winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, 0);
                 return 0;
             }
             _ => {}
