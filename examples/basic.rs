@@ -4,6 +4,12 @@ struct State {
     _window: Window,
 }
 
+impl Drop for State {
+    fn drop(&mut self) {
+        println!("drop");
+    }
+}
+
 impl State {
     fn handle_event(&mut self, cx: &AppContext<Self>, event: Event) -> Response {
         match event {
