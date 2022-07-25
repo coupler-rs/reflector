@@ -13,12 +13,16 @@ impl Drop for State {
 impl State {
     fn handle_event(&mut self, cx: &AppContext<Self>, event: Event) -> Response {
         match event {
+            Event::MouseMove(pos) => {
+                println!("mouse move: {:?}", pos);
+            }
             Event::RequestClose => {
                 cx.exit();
-                Response::Capture
             }
-            _ => Response::Ignore,
+            _ => {}
         }
+
+        Response::Ignore
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::{AppContext, Error, Event, Response, Result, WindowOptions};
+use crate::{AppContext, Error, Event, Response, Result, WindowOptions, Point};
 
 use std::cell::{Cell, RefCell};
 use std::ffi::OsStr;
@@ -7,7 +7,8 @@ use std::rc::Rc;
 use std::{fmt, mem, ptr};
 
 use winapi::{
-    shared::minwindef, shared::ntdef, shared::windef, um::errhandlingapi, um::winnt, um::winuser,
+    shared::minwindef, shared::ntdef, shared::windef, shared::windowsx, um::errhandlingapi,
+    um::winnt, um::winuser,
 };
 
 extern "C" {
@@ -262,6 +263,15 @@ unsafe extern "system" fn wnd_proc<T>(
         let _ = Rc::into_raw(state_rc);
 
         match msg {
+            winuser::WM_MOUSEMOVE => {
+                let point = Point {
+                    x: windowsx::GET_X_LPARAM(lparam) as f64,
+                    y: windowsx::GET_Y_LPARAM(lparam) as f64,
+                };
+                state.handle_event(Event::MouseMove(point));
+
+                return 0;
+            }
             winuser::WM_ERASEBKGND => {
                 return 1;
             }
