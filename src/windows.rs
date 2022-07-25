@@ -133,7 +133,9 @@ impl<T> AppInner<T> {
 
 impl<T> Drop for AppInner<T> {
     fn drop(&mut self) {
-        drop(self.state.data.take());
+        if let Ok(mut data) = self.state.data.try_borrow_mut() {
+            drop(data.take());
+        }
     }
 }
 
