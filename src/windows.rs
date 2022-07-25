@@ -224,7 +224,7 @@ impl WindowInner {
                 }));
             }
 
-            let state = Box::into_raw(Box::new(WindowState {
+            let state = Rc::into_raw(Rc::new(WindowState {
                 app_state: Rc::clone(cx.inner.state),
                 handler: RefCell::new(Box::new(handler)),
             }));
@@ -241,6 +241,14 @@ impl WindowInner {
     }
 }
 
+impl Drop for WindowInner {
+    fn drop(&mut self) {
+        unsafe {
+            winuser::DestroyWindow(self.hwnd);
+        }
+    }
+}
+
 unsafe extern "system" fn wnd_proc<T>(
     hwnd: windef::HWND,
     msg: minwindef::UINT,
@@ -249,11 +257,17 @@ unsafe extern "system" fn wnd_proc<T>(
 ) -> minwindef::LRESULT {
     let state_ptr = winuser::GetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA) as *mut WindowState<T>;
     if !state_ptr.is_null() {
-        let state = &*state_ptr;
+        let state_rc = Rc::from_raw(state_ptr);
+        let state = Rc::clone(&state_rc);
+        let _ = Rc::into_raw(state_rc);
 
         match msg {
             winuser::WM_CLOSE => {
                 state.handle_event(Event::RequestClose);
+                return 0;
+            }
+            winuser::WM_DESTROY => {
+                drop(Rc::from_raw(state_ptr));
                 return 0;
             }
             _ => {}
