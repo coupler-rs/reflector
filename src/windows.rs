@@ -1,4 +1,4 @@
-use crate::{AppContext, Error, Event, Response, Result, WindowOptions, Point};
+use crate::{AppContext, Error, Event, MouseButton, Point, Response, Result, WindowOptions};
 
 use std::cell::{Cell, RefCell};
 use std::ffi::OsStr;
@@ -151,6 +151,7 @@ impl<'a, T> AppContextInner<'a, T> {
 }
 
 struct WindowState<T> {
+    mouse_down_count: Cell<isize>,
     app_state: Rc<AppState<T>>,
     handler: RefCell<Box<dyn FnMut(&mut T, &AppContext<T>, Event) -> Response>>,
 }
@@ -226,6 +227,7 @@ impl WindowInner {
             }
 
             let state = Rc::into_raw(Rc::new(WindowState {
+                mouse_down_count: Cell::new(0),
                 app_state: Rc::clone(cx.inner.state),
                 handler: RefCell::new(Box::new(handler)),
             }));
@@ -271,6 +273,64 @@ unsafe extern "system" fn wnd_proc<T>(
                 state.handle_event(Event::MouseMove(point));
 
                 return 0;
+            }
+            winuser::WM_LBUTTONDOWN
+            | winuser::WM_LBUTTONUP
+            | winuser::WM_MBUTTONDOWN
+            | winuser::WM_MBUTTONUP
+            | winuser::WM_RBUTTONDOWN
+            | winuser::WM_RBUTTONUP
+            | winuser::WM_XBUTTONDOWN
+            | winuser::WM_XBUTTONUP => {
+                let button = match msg {
+                    winuser::WM_LBUTTONDOWN | winuser::WM_LBUTTONUP => Some(MouseButton::Left),
+                    winuser::WM_MBUTTONDOWN | winuser::WM_MBUTTONUP => Some(MouseButton::Middle),
+                    winuser::WM_RBUTTONDOWN | winuser::WM_RBUTTONUP => Some(MouseButton::Right),
+                    winuser::WM_XBUTTONDOWN | winuser::WM_XBUTTONUP => {
+                        match winuser::GET_XBUTTON_WPARAM(wparam) {
+                            winuser::XBUTTON1 => Some(MouseButton::Back),
+                            winuser::XBUTTON2 => Some(MouseButton::Forward),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
+
+                if let Some(button) = button {
+                    let event = match msg {
+                        winuser::WM_LBUTTONDOWN
+                        | winuser::WM_MBUTTONDOWN
+                        | winuser::WM_RBUTTONDOWN
+                        | winuser::WM_XBUTTONDOWN => Some(Event::MouseDown(button)),
+                        winuser::WM_LBUTTONUP
+                        | winuser::WM_MBUTTONUP
+                        | winuser::WM_RBUTTONUP
+                        | winuser::WM_XBUTTONUP => Some(Event::MouseUp(button)),
+                        _ => None,
+                    };
+
+                    if let Some(event) = event {
+                        match event {
+                            Event::MouseDown(_) => {
+                                state.mouse_down_count.set(state.mouse_down_count.get() + 1);
+                                if state.mouse_down_count.get() == 1 {
+                                    winuser::SetCapture(hwnd);
+                                }
+                            }
+                            Event::MouseUp(_) => {
+                                state.mouse_down_count.set(state.mouse_down_count.get() - 1);
+                                if state.mouse_down_count.get() == 0 {
+                                    winuser::ReleaseCapture();
+                                }
+                            }
+                            _ => {}
+                        }
+
+                        if state.handle_event(event) == Some(Response::Capture) {
+                            return 0;
+                        }
+                    }
+                }
             }
             winuser::WM_ERASEBKGND => {
                 return 1;

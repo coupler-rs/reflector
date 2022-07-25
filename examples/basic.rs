@@ -16,6 +16,14 @@ impl State {
             Event::MouseMove(pos) => {
                 println!("mouse move: {:?}", pos);
             }
+            Event::MouseDown(btn) => {
+                println!("mouse down: {:?}", btn);
+                return Response::Capture;
+            }
+            Event::MouseUp(btn) => {
+                println!("mouse up: {:?}", btn);
+                return Response::Capture;
+            }
             Event::RequestClose => {
                 cx.exit();
             }
