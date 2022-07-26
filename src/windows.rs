@@ -1,4 +1,6 @@
-use crate::{AppContext, Error, Event, MouseButton, Point, Response, Result, WindowOptions};
+use crate::{
+    AppContext, Cursor, Error, Event, MouseButton, Point, Response, Result, WindowOptions,
+};
 
 use std::cell::{Cell, RefCell};
 use std::ffi::OsStr;
@@ -248,6 +250,8 @@ impl WindowInner {
 
         Ok(WindowInner { hwnd })
     }
+
+    pub fn set_cursor(&self, _cursor: Cursor) {}
 }
 
 impl Drop for WindowInner {

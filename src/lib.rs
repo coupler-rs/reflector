@@ -245,6 +245,12 @@ pub struct Window {
     phantom: PhantomData<*mut ()>,
 }
 
+impl Window {
+    pub fn set_cursor(&self, cursor: Cursor) {
+        self.inner.set_cursor(cursor);
+    }
+}
+
 impl fmt::Debug for Window {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("Window").finish_non_exhaustive()
