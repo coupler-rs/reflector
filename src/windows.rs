@@ -66,7 +66,7 @@ impl<T> AppInner<T> {
 
             let wnd_class = winuser::WNDCLASSW {
                 style: winuser::CS_HREDRAW | winuser::CS_VREDRAW | winuser::CS_OWNDC,
-                lpfnWndProc: Some(wnd_proc::<T>),
+                lpfnWndProc: Some(wnd_proc),
                 cbClsExtra: 0,
                 cbWndExtra: 0,
                 hInstance: &__ImageBase as *const winnt::IMAGE_DOS_HEADER as minwindef::HINSTANCE,
@@ -152,14 +152,19 @@ impl<'a, T> AppContextInner<'a, T> {
     }
 }
 
-struct WindowState<T> {
-    hdc: Cell<Option<windef::HDC>>,
-    mouse_down_count: Cell<isize>,
-    app_state: Rc<AppState<T>>,
-    handler: RefCell<Box<dyn FnMut(&mut T, &AppContext<T>, Event) -> Response>>,
+trait HandleEvent {
+    fn handle_event(&self, event: Event) -> Option<Response>;
 }
 
-impl<T> WindowState<T> {
+struct Handler<T, H> {
+    app_state: Rc<AppState<T>>,
+    handler: RefCell<H>,
+}
+
+impl<T, H> HandleEvent for Handler<T, H>
+where
+    H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
+{
     fn handle_event(&self, event: Event) -> Option<Response> {
         if let Ok(mut handler) = self.handler.try_borrow_mut() {
             if let Ok(mut data) = self.app_state.data.try_borrow_mut() {
@@ -173,6 +178,18 @@ impl<T> WindowState<T> {
         }
 
         None
+    }
+}
+
+struct WindowState {
+    hdc: Cell<Option<windef::HDC>>,
+    mouse_down_count: Cell<isize>,
+    handler: Box<dyn HandleEvent>,
+}
+
+impl WindowState {
+    unsafe fn from_hwnd(hwnd: windef::HWND) -> *mut WindowState {
+        winuser::GetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA) as *mut WindowState
     }
 }
 
@@ -190,6 +207,7 @@ impl WindowInner {
         handler: H,
     ) -> Result<WindowInner>
     where
+        T: 'static,
         H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
         H: 'static,
     {
@@ -235,8 +253,10 @@ impl WindowInner {
             let state = Rc::into_raw(Rc::new(WindowState {
                 hdc: Cell::new(None),
                 mouse_down_count: Cell::new(0),
-                app_state: Rc::clone(cx.inner.state),
-                handler: RefCell::new(Box::new(handler)),
+                handler: Box::new(Handler {
+                    app_state: Rc::clone(cx.inner.state),
+                    handler: RefCell::new(handler),
+                }),
             }));
 
             winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, state as isize);
@@ -257,18 +277,22 @@ impl WindowInner {
 impl Drop for WindowInner {
     fn drop(&mut self) {
         unsafe {
+            winuser::KillTimer(self.hwnd, TIMER_ID);
+
+            let state_ptr = WindowState::from_hwnd(self.hwnd);
             winuser::DestroyWindow(self.hwnd);
+            drop(Rc::from_raw(state_ptr));
         }
     }
 }
 
-unsafe extern "system" fn wnd_proc<T>(
+unsafe extern "system" fn wnd_proc(
     hwnd: windef::HWND,
     msg: minwindef::UINT,
     wparam: minwindef::WPARAM,
     lparam: minwindef::LPARAM,
 ) -> minwindef::LRESULT {
-    let state_ptr = winuser::GetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA) as *mut WindowState<T>;
+    let state_ptr = WindowState::from_hwnd(hwnd);
     if !state_ptr.is_null() {
         let state_rc = Rc::from_raw(state_ptr);
         let state = Rc::clone(&state_rc);
@@ -277,7 +301,7 @@ unsafe extern "system" fn wnd_proc<T>(
         match msg {
             winuser::WM_TIMER => {
                 if wparam == TIMER_ID {
-                    state.handle_event(Event::Frame);
+                    state.handler.handle_event(Event::Frame);
                 }
                 return 0;
             }
@@ -291,7 +315,7 @@ unsafe extern "system" fn wnd_proc<T>(
                     state.hdc.set(Some(hdc));
                 }
 
-                state.handle_event(Event::Display);
+                state.handler.handle_event(Event::Display);
 
                 state.hdc.set(None);
                 winuser::EndPaint(hwnd, &paint_struct);
@@ -303,7 +327,7 @@ unsafe extern "system" fn wnd_proc<T>(
                     x: windowsx::GET_X_LPARAM(lparam) as f64,
                     y: windowsx::GET_Y_LPARAM(lparam) as f64,
                 };
-                state.handle_event(Event::MouseMove(point));
+                state.handler.handle_event(Event::MouseMove(point));
 
                 return 0;
             }
@@ -359,7 +383,7 @@ unsafe extern "system" fn wnd_proc<T>(
                             _ => {}
                         }
 
-                        if state.handle_event(event) == Some(Response::Capture) {
+                        if state.handler.handle_event(event) == Some(Response::Capture) {
                             return 0;
                         }
                     }
@@ -373,20 +397,12 @@ unsafe extern "system" fn wnd_proc<T>(
                     _ => unreachable!(),
                 };
 
-                if state.handle_event(Event::Scroll(point)) == Some(Response::Capture) {
+                if state.handler.handle_event(Event::Scroll(point)) == Some(Response::Capture) {
                     return 0;
                 }
             }
             winuser::WM_CLOSE => {
-                state.handle_event(Event::RequestClose);
-                return 0;
-            }
-            winuser::WM_DESTROY => {
-                winuser::KillTimer(hwnd, TIMER_ID);
-
-                drop(Rc::from_raw(state_ptr));
-                winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, 0);
-
+                state.handler.handle_event(Event::RequestClose);
                 return 0;
             }
             _ => {}

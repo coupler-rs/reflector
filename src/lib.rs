@@ -229,8 +229,9 @@ impl WindowOptions {
 
     pub fn open<T, H>(&self, cx: &AppContext<T>, handler: H) -> Result<Window>
     where
-        H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
         H: 'static,
+        H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
+        T: 'static,
     {
         Ok(Window {
             inner: platform::WindowInner::open(self, cx, handler)?,
