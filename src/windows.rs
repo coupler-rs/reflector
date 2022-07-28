@@ -184,12 +184,33 @@ where
 struct WindowState {
     hdc: Cell<Option<windef::HDC>>,
     mouse_down_count: Cell<isize>,
+    cursor: Cell<Cursor>,
     handler: Box<dyn HandleEvent>,
 }
 
 impl WindowState {
     unsafe fn from_hwnd(hwnd: windef::HWND) -> *mut WindowState {
         winuser::GetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA) as *mut WindowState
+    }
+
+    fn update_cursor(&self) {
+        unsafe {
+            let hcursor = match self.cursor.get() {
+                Cursor::Arrow => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_ARROW),
+                Cursor::Crosshair => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_CROSS),
+                Cursor::Hand => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_HAND),
+                Cursor::IBeam => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_IBEAM),
+                Cursor::No => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_NO),
+                Cursor::SizeNs => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_SIZENS),
+                Cursor::SizeWe => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_SIZEWE),
+                Cursor::SizeNesw => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_SIZENESW),
+                Cursor::SizeNwse => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_SIZENWSE),
+                Cursor::Wait => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_WAIT),
+                Cursor::None => ptr::null_mut(),
+            };
+
+            winuser::SetCursor(hcursor);
+        }
     }
 }
 
@@ -253,6 +274,7 @@ impl WindowInner {
             let state = Rc::into_raw(Rc::new(WindowState {
                 hdc: Cell::new(None),
                 mouse_down_count: Cell::new(0),
+                cursor: Cell::new(Cursor::Arrow),
                 handler: Box::new(Handler {
                     app_state: Rc::clone(cx.inner.state),
                     handler: RefCell::new(handler),
@@ -271,7 +293,12 @@ impl WindowInner {
         Ok(WindowInner { hwnd })
     }
 
-    pub fn set_cursor(&self, _cursor: Cursor) {}
+    pub fn set_cursor(&self, cursor: Cursor) {
+        let state = unsafe { &*WindowState::from_hwnd(self.hwnd) };
+
+        state.cursor.set(cursor);
+        state.update_cursor();
+    }
 }
 
 impl Drop for WindowInner {
@@ -304,6 +331,14 @@ unsafe extern "system" fn wnd_proc(
                     state.handler.handle_event(Event::Frame);
                 }
                 return 0;
+            }
+            winuser::WM_SETCURSOR => {
+                if minwindef::LOWORD(lparam as minwindef::DWORD)
+                    == winuser::HTCLIENT as minwindef::WORD
+                {
+                    state.update_cursor();
+                    return 0;
+                }
             }
             winuser::WM_ERASEBKGND => {
                 return 1;
