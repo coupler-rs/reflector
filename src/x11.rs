@@ -1,4 +1,4 @@
-use crate::{AppContext, Cursor, Event, Response, Result, WindowOptions};
+use crate::{AppContext, Cursor, Event, Rect, Response, Result, WindowOptions};
 
 use std::fmt;
 use std::marker::PhantomData;
@@ -60,6 +60,10 @@ impl WindowInner {
     {
         Ok(WindowInner {})
     }
+
+    pub fn request_display(&self) {}
+
+    pub fn request_display_rect(&self, rect: Rect) {}
 
     pub fn set_cursor(&self, _cursor: Cursor) {}
 }

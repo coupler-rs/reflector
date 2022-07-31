@@ -1,5 +1,5 @@
 use crate::{
-    AppContext, Cursor, Error, Event, MouseButton, Point, Response, Result, WindowOptions,
+    AppContext, Cursor, Error, Event, MouseButton, Point, Rect, Response, Result, WindowOptions,
 };
 
 use std::cell::{Cell, RefCell};
@@ -292,6 +292,10 @@ impl WindowInner {
 
         Ok(WindowInner { hwnd })
     }
+
+    pub fn request_display(&self) {}
+
+    pub fn request_display_rect(&self, rect: Rect) {}
 
     pub fn set_cursor(&self, cursor: Cursor) {
         let state = unsafe { &*WindowState::from_hwnd(self.hwnd) };

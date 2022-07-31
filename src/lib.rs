@@ -247,6 +247,14 @@ pub struct Window {
 }
 
 impl Window {
+    pub fn request_display(&self) {
+        self.inner.request_display();
+    }
+
+    pub fn request_display_rect(&self, rect: Rect) {
+        self.inner.request_display_rect(rect);
+    }
+
     pub fn set_cursor(&self, cursor: Cursor) {
         self.inner.set_cursor(cursor);
     }
