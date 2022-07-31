@@ -293,9 +293,24 @@ impl WindowInner {
         Ok(WindowInner { hwnd })
     }
 
-    pub fn request_display(&self) {}
+    pub fn request_display(&self) {
+        unsafe {
+            winuser::InvalidateRect(self.hwnd, ptr::null(), minwindef::FALSE);
+        }
+    }
 
-    pub fn request_display_rect(&self, rect: Rect) {}
+    pub fn request_display_rect(&self, rect: Rect) {
+        unsafe {
+            let rect = windef::RECT {
+                left: rect.x.round() as winnt::LONG,
+                top: rect.y.round() as winnt::LONG,
+                right: (rect.x + rect.width).round() as winnt::LONG,
+                bottom: (rect.y + rect.height).round() as winnt::LONG,
+            };
+
+            winuser::InvalidateRect(self.hwnd, &rect, minwindef::FALSE);
+        }
+    }
 
     pub fn set_cursor(&self, cursor: Cursor) {
         let state = unsafe { &*WindowState::from_hwnd(self.hwnd) };
