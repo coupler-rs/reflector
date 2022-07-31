@@ -135,16 +135,29 @@ impl<T> AppInner<T> {
         Ok(())
     }
 
+    fn take_data(&self) -> Option<T> {
+        if let Ok(mut data) = self.state.data.try_borrow_mut() {
+            return data.take();
+        }
+
+        None
+    }
+
     pub fn into_inner(self) -> result::Result<T, CloseError<App<T>>> {
-        unimplemented!()
+        if let Some(data) = self.take_data() {
+            Ok(data)
+        } else {
+            Err(CloseError::new(
+                Error::InsideEventHandler,
+                App::from_inner(self),
+            ))
+        }
     }
 }
 
 impl<T> Drop for AppInner<T> {
     fn drop(&mut self) {
-        if let Ok(mut data) = self.state.data.try_borrow_mut() {
-            drop(data.take());
-        }
+        drop(self.take_data());
     }
 }
 

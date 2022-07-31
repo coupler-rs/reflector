@@ -83,15 +83,19 @@ pub struct App<T> {
 }
 
 impl<T> App<T> {
+    fn from_inner(inner: platform::AppInner<T>) -> App<T> {
+        App {
+            inner,
+            phantom: PhantomData,
+        }
+    }
+
     pub fn new<F>(build: F) -> Result<App<T>>
     where
         F: FnOnce(&AppContext<T>) -> Result<T>,
         T: 'static,
     {
-        Ok(App {
-            inner: platform::AppInner::new(build)?,
-            phantom: PhantomData,
-        })
+        Ok(App::from_inner(platform::AppInner::new(build)?))
     }
 
     pub fn run(&mut self) -> Result<()> {
