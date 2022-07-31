@@ -10,7 +10,7 @@ use std::{fmt, mem, ptr};
 
 use winapi::{
     shared::minwindef, shared::ntdef, shared::windef, shared::windowsx, um::errhandlingapi,
-    um::winnt, um::winuser,
+    um::wingdi, um::winnt, um::winuser,
 };
 
 extern "C" {
@@ -312,7 +312,57 @@ impl WindowInner {
         }
     }
 
-    pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {}
+    pub fn update_contents(&self, buffer: &[u32], width: usize, height: usize) {
+        assert!(
+            width * height == buffer.len(),
+            "invalid framebuffer dimensions"
+        );
+
+        let state = unsafe { &*WindowState::from_hwnd(self.hwnd) };
+
+        unsafe {
+            let hdc = if let Some(hdc) = state.hdc.get() {
+                hdc
+            } else {
+                winuser::GetDC(self.hwnd)
+            };
+
+            if !hdc.is_null() {
+                let bitmap_info = wingdi::BITMAPINFO {
+                    bmiHeader: wingdi::BITMAPINFOHEADER {
+                        biSize: mem::size_of::<wingdi::BITMAPINFOHEADER>() as u32,
+                        biWidth: width as i32,
+                        biHeight: -(height as i32),
+                        biPlanes: 1,
+                        biBitCount: 32,
+                        biCompression: wingdi::BI_RGB,
+                        ..mem::zeroed()
+                    },
+                    ..mem::zeroed()
+                };
+
+                wingdi::StretchDIBits(
+                    hdc,
+                    0,
+                    0,
+                    width as i32,
+                    height as i32,
+                    0,
+                    0,
+                    width as i32,
+                    height as i32,
+                    buffer.as_ptr() as *const ntdef::VOID,
+                    &bitmap_info,
+                    wingdi::DIB_RGB_COLORS,
+                    wingdi::SRCCOPY,
+                );
+
+                if state.hdc.get().is_none() {
+                    winuser::ReleaseDC(self.hwnd, hdc);
+                }
+            }
+        }
+    }
 
     pub fn set_cursor(&self, cursor: Cursor) {
         let state = unsafe { &*WindowState::from_hwnd(self.hwnd) };
