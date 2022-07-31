@@ -249,6 +249,14 @@ pub struct Window {
 }
 
 impl Window {
+    pub fn show(&self) {
+        self.inner.show();
+    }
+
+    pub fn hide(&self) {
+        self.inner.hide();
+    }
+
     pub fn request_display(&self) {
         self.inner.request_display();
     }

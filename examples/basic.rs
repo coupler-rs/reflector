@@ -54,6 +54,8 @@ fn main() {
             .open(cx, State::handle_event)
             .unwrap();
 
+        window.show();
+
         Ok(State { window: window })
     })
     .unwrap()

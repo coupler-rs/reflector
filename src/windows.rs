@@ -294,6 +294,10 @@ impl WindowInner {
         Ok(WindowInner { hwnd })
     }
 
+    pub fn show(&self) {}
+
+    pub fn hide(&self) {}
+
     pub fn request_display(&self) {
         unsafe {
             winuser::InvalidateRect(self.hwnd, ptr::null(), minwindef::FALSE);

@@ -63,6 +63,10 @@ impl WindowInner {
         Ok(WindowInner {})
     }
 
+    pub fn show(&self) {}
+
+    pub fn hide(&self) {}
+
     pub fn request_display(&self) {}
 
     pub fn request_display_rect(&self, rect: Rect) {}
