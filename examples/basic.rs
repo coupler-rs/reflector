@@ -1,7 +1,7 @@
 use portlight::{App, AppContext, Event, Response, Size, Window, WindowOptions};
 
 struct State {
-    _window: Window,
+    window: Window,
 }
 
 impl Drop for State {
@@ -15,9 +15,12 @@ impl State {
         match event {
             Event::Frame => {
                 println!("frame");
+                self.window.request_display();
             }
             Event::Display => {
                 println!("display");
+                self.window
+                    .update_contents(&[0xFFFF00FF; 512 * 512], 512, 512);
             }
             Event::MouseMove(pos) => {
                 println!("mouse move: {:?}", pos);
@@ -47,11 +50,11 @@ fn main() {
     App::new(|cx| {
         let window = WindowOptions::new()
             .title("window")
-            .size(Size::new(640.0, 480.0))
+            .size(Size::new(512.0, 512.0))
             .open(cx, State::handle_event)
             .unwrap();
 
-        Ok(State { _window: window })
+        Ok(State { window: window })
     })
     .unwrap()
     .run()

@@ -255,6 +255,10 @@ impl Window {
         self.inner.request_display_rect(rect);
     }
 
+    pub fn update_contents(&self, buffer: &[u32], width: usize, height: usize) {
+        self.inner.update_contents(buffer, width, height);
+    }
+
     pub fn set_cursor(&self, cursor: Cursor) {
         self.inner.set_cursor(cursor);
     }

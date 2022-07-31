@@ -65,5 +65,7 @@ impl WindowInner {
 
     pub fn request_display_rect(&self, rect: Rect) {}
 
+    pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {}
+
     pub fn set_cursor(&self, _cursor: Cursor) {}
 }

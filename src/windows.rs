@@ -312,6 +312,8 @@ impl WindowInner {
         }
     }
 
+    pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {}
+
     pub fn set_cursor(&self, cursor: Cursor) {
         let state = unsafe { &*WindowState::from_hwnd(self.hwnd) };
 
