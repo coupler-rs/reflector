@@ -8,6 +8,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::rc::Rc;
 use std::{fmt, mem, ptr};
 
+use raw_window_handle::RawWindowHandle;
 use winapi::{
     shared::minwindef, shared::ntdef, shared::windef, shared::windowsx, um::errhandlingapi,
     um::wingdi, um::winnt, um::winuser,
@@ -369,6 +370,10 @@ impl WindowInner {
 
         state.cursor.set(cursor);
         state.update_cursor();
+    }
+
+    pub fn raw_window_handle(&self) -> RawWindowHandle {
+        unimplemented!()
     }
 }
 

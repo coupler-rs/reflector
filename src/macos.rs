@@ -3,6 +3,8 @@ use crate::{AppContext, Cursor, Event, Rect, Response, Result, WindowOptions};
 use std::fmt;
 use std::marker::PhantomData;
 
+use raw_window_handle::RawWindowHandle;
+
 #[derive(Debug)]
 pub struct OsError {}
 
@@ -68,4 +70,8 @@ impl WindowInner {
     pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {}
 
     pub fn set_cursor(&self, _cursor: Cursor) {}
+
+    pub fn raw_window_handle(&self) -> RawWindowHandle {
+        unimplemented!()
+    }
 }

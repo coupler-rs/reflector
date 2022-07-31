@@ -17,6 +17,8 @@ use std::ffi::{OsStr, OsString};
 use std::marker::PhantomData;
 use std::{error, fmt, result};
 
+use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
+
 pub type Result<T> = result::Result<T, Error>;
 
 #[derive(Debug)]
@@ -267,5 +269,11 @@ impl Window {
 impl fmt::Debug for Window {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("Window").finish_non_exhaustive()
+    }
+}
+
+unsafe impl HasRawWindowHandle for Window {
+    fn raw_window_handle(&self) -> RawWindowHandle {
+        self.inner.raw_window_handle()
     }
 }
