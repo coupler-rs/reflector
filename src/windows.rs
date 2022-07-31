@@ -286,17 +286,23 @@ impl WindowInner {
 
             winuser::SetTimer(hwnd, TIMER_ID, TIMER_INTERVAL, None);
 
-            winuser::ShowWindow(hwnd, winuser::SW_SHOWNORMAL);
-
             hwnd
         };
 
         Ok(WindowInner { hwnd })
     }
 
-    pub fn show(&self) {}
+    pub fn show(&self) {
+        unsafe {
+            winuser::ShowWindow(self.hwnd, winuser::SW_SHOWNORMAL);
+        }
+    }
 
-    pub fn hide(&self) {}
+    pub fn hide(&self) {
+        unsafe {
+            winuser::ShowWindow(self.hwnd, winuser::SW_HIDE);
+        }
+    }
 
     pub fn request_display(&self) {
         unsafe {
