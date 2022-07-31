@@ -40,6 +40,42 @@ impl fmt::Display for Error {
     }
 }
 
+#[derive(Debug)]
+pub struct CloseError<T> {
+    error: Error,
+    inner: T,
+}
+
+impl<T> CloseError<T> {
+    fn new(error: Error, inner: T) -> CloseError<T> {
+        CloseError { error, inner }
+    }
+
+    pub fn error(&self) -> &Error {
+        &self.error
+    }
+
+    pub fn into_error(self) -> Error {
+        self.error
+    }
+
+    pub fn into_inner(self) -> T {
+        self.inner
+    }
+
+    pub fn into_parts(self) -> (Error, T) {
+        (self.error, self.inner)
+    }
+}
+
+impl<T: Send + fmt::Debug> error::Error for CloseError<T> {}
+
+impl<T> fmt::Display for CloseError<T> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        self.error.fmt(fmt)
+    }
+}
+
 pub struct App<T> {
     inner: platform::AppInner<T>,
     // ensure !Send and !Sync on all platforms
@@ -64,6 +100,10 @@ impl<T> App<T> {
 
     pub fn poll(&mut self) -> Result<()> {
         self.inner.poll()
+    }
+
+    pub fn into_inner(self) -> result::Result<T, CloseError<App<T>>> {
+        self.inner.into_inner()
     }
 }
 
@@ -271,6 +311,10 @@ impl Window {
 
     pub fn set_cursor(&self, cursor: Cursor) {
         self.inner.set_cursor(cursor);
+    }
+
+    pub fn close(self) -> result::Result<(), CloseError<Window>> {
+        self.inner.close()
     }
 }
 

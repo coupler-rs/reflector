@@ -1,4 +1,6 @@
-use crate::{AppContext, Cursor, Event, Rect, Response, Result, WindowOptions};
+use crate::{
+    App, AppContext, CloseError, Cursor, Event, Rect, Response, Result, Window, WindowOptions,
+};
 
 use std::fmt;
 use std::marker::PhantomData;
@@ -38,6 +40,10 @@ impl<T> AppInner<T> {
     pub fn poll(&self) -> Result<()> {
         Ok(())
     }
+
+    pub fn into_inner(self) -> result::Result<T, CloseError<App<T>>> {
+        unimplemented!()
+    }
 }
 
 pub struct AppContextInner<'a, T> {
@@ -76,6 +82,10 @@ impl WindowInner {
     pub fn set_cursor(&self, _cursor: Cursor) {}
 
     pub fn raw_window_handle(&self) -> RawWindowHandle {
+        unimplemented!()
+    }
+
+    pub fn close(self) -> result::Result<(), CloseError<Window>> {
         unimplemented!()
     }
 }

@@ -1,12 +1,13 @@
 use crate::{
-    AppContext, Cursor, Error, Event, MouseButton, Point, Rect, Response, Result, WindowOptions,
+    App, AppContext, CloseError, Cursor, Error, Event, MouseButton, Point, Rect, Response, Result,
+    Window, WindowOptions,
 };
 
 use std::cell::{Cell, RefCell};
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::rc::Rc;
-use std::{fmt, mem, ptr};
+use std::{fmt, mem, ptr, result};
 
 use raw_window_handle::{windows::WindowsHandle, RawWindowHandle};
 use winapi::{
@@ -132,6 +133,10 @@ impl<T> AppInner<T> {
 
     pub fn poll(&self) -> Result<()> {
         Ok(())
+    }
+
+    pub fn into_inner(self) -> result::Result<T, CloseError<App<T>>> {
+        unimplemented!()
     }
 }
 
@@ -387,6 +392,10 @@ impl WindowInner {
             hwnd: self.hwnd as *mut std::ffi::c_void,
             ..WindowsHandle::empty()
         })
+    }
+
+    pub fn close(self) -> result::Result<(), CloseError<Window>> {
+        unimplemented!()
     }
 }
 
