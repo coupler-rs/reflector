@@ -76,12 +76,6 @@ impl<T> fmt::Display for CloseError<T> {
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum PollResult {
-    Event,
-    NoEvent,
-}
-
 pub struct App<T> {
     inner: platform::AppInner<T>,
     // ensure !Send and !Sync on all platforms
@@ -108,7 +102,7 @@ impl<T> App<T> {
         self.inner.run()
     }
 
-    pub fn poll(&mut self) -> Result<PollResult> {
+    pub fn poll(&mut self) -> Result<()> {
         self.inner.poll()
     }
 

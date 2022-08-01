@@ -1,6 +1,6 @@
 use crate::{
-    App, AppContext, CloseError, Cursor, Error, Event, MouseButton, Point, PollResult, Rect,
-    Response, Result, Window, WindowOptions,
+    App, AppContext, CloseError, Cursor, Error, Event, MouseButton, Point, Rect, Response, Result,
+    Window, WindowOptions,
 };
 
 use std::cell::{Cell, RefCell};
@@ -132,24 +132,25 @@ impl<T> AppInner<T> {
         Ok(())
     }
 
-    pub fn poll(&mut self) -> Result<PollResult> {
+    pub fn poll(&mut self) -> Result<()> {
         if self.state.running.get() || self.state.data.try_borrow().is_err() {
             return Err(Error::InsideEventHandler);
         }
 
-        unsafe {
-            let mut msg: winuser::MSG = mem::zeroed();
+        loop {
+            unsafe {
+                let mut msg: winuser::MSG = mem::zeroed();
 
-            let result = winuser::PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, winuser::PM_REMOVE);
-            if result != 0 {
+                let result =
+                    winuser::PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, winuser::PM_REMOVE);
+                if result == 0 {
+                    return Ok(());
+                }
+
                 winuser::TranslateMessage(&msg);
                 winuser::DispatchMessageW(&msg);
-
-                return Ok(PollResult::Event);
             }
         }
-
-        Ok(PollResult::NoEvent)
     }
 
     fn take_data(&self) -> Option<T> {
