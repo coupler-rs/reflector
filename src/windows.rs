@@ -400,6 +400,8 @@ impl WindowInner {
         state.update_cursor();
     }
 
+    pub fn set_mouse_position(&self, position: Point) {}
+
     pub fn raw_window_handle(&self) -> RawWindowHandle {
         RawWindowHandle::Windows(WindowsHandle {
             hwnd: self.hwnd as *mut std::ffi::c_void,

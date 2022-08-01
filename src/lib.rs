@@ -341,6 +341,10 @@ impl Window {
         self.inner.set_cursor(cursor);
     }
 
+    pub fn set_mouse_position(&self, position: Point) {
+        self.inner.set_mouse_position(position);
+    }
+
     pub fn close(self) -> result::Result<(), CloseError<Window>> {
         self.inner.close()
     }

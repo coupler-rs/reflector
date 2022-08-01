@@ -81,6 +81,8 @@ impl WindowInner {
 
     pub fn set_cursor(&self, _cursor: Cursor) {}
 
+    pub fn set_mouse_position(&self, position: Point) {}
+
     pub fn raw_window_handle(&self) -> RawWindowHandle {
         unimplemented!()
     }
