@@ -16,8 +16,12 @@ use winapi::{
     um::wingdi, um::winnt, um::winuser,
 };
 
-extern "C" {
-    static __ImageBase: winnt::IMAGE_DOS_HEADER;
+fn hinstance() -> minwindef::HINSTANCE {
+    extern "C" {
+        static __ImageBase: winnt::IMAGE_DOS_HEADER;
+    }
+
+    unsafe { &__ImageBase as *const winnt::IMAGE_DOS_HEADER as minwindef::HINSTANCE }
 }
 
 fn to_wstring<S: AsRef<OsStr> + ?Sized>(str: &S) -> Vec<ntdef::WCHAR> {
@@ -45,10 +49,7 @@ struct AppState<T> {
 impl<T> Drop for AppState<T> {
     fn drop(&mut self) {
         unsafe {
-            winuser::UnregisterClassW(
-                self.class as *const ntdef::WCHAR,
-                &__ImageBase as *const winnt::IMAGE_DOS_HEADER as minwindef::HINSTANCE,
-            );
+            winuser::UnregisterClassW(self.class as *const ntdef::WCHAR, hinstance());
         }
     }
 }
@@ -71,7 +72,7 @@ impl<T> AppInner<T> {
                 lpfnWndProc: Some(wnd_proc),
                 cbClsExtra: 0,
                 cbWndExtra: 0,
-                hInstance: &__ImageBase as *const winnt::IMAGE_DOS_HEADER as minwindef::HINSTANCE,
+                hInstance: hinstance(),
                 hIcon: ptr::null_mut(),
                 hCursor: winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_ARROW),
                 hbrBackground: ptr::null_mut(),
@@ -295,7 +296,7 @@ impl WindowInner {
                 rect.bottom - rect.top,
                 ptr::null_mut(),
                 ptr::null_mut(),
-                ptr::null_mut(),
+                hinstance(),
                 ptr::null_mut(),
             );
             if hwnd.is_null() {
