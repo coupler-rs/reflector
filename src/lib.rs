@@ -227,12 +227,19 @@ pub enum Response {
 }
 
 #[derive(Clone, Debug)]
-pub struct WindowOptions {
-    title: OsString,
-    rect: Rect,
+enum Parent<'a> {
+    Window(&'a Window),
+    Raw(RawWindowHandle),
 }
 
-impl Default for WindowOptions {
+#[derive(Clone, Debug)]
+pub struct WindowOptions<'a> {
+    title: OsString,
+    rect: Rect,
+    parent: Option<Parent<'a>>,
+}
+
+impl<'a> Default for WindowOptions<'a> {
     fn default() -> Self {
         WindowOptions {
             title: OsString::new(),
@@ -242,12 +249,13 @@ impl Default for WindowOptions {
                 width: 0.0,
                 height: 0.0,
             },
+            parent: None,
         }
     }
 }
 
-impl WindowOptions {
-    pub fn new() -> WindowOptions {
+impl<'a> WindowOptions<'a> {
+    pub fn new() -> WindowOptions<'a> {
         Self::default()
     }
 
@@ -270,6 +278,16 @@ impl WindowOptions {
     pub fn size(&mut self, size: Size) -> &mut Self {
         self.rect.width = size.width;
         self.rect.height = size.height;
+        self
+    }
+
+    pub fn parent(&mut self, parent: &'a Window) -> &mut Self {
+        self.parent = Some(Parent::Window(parent));
+        self
+    }
+
+    pub unsafe fn raw_parent(&mut self, parent: RawWindowHandle) -> &mut Self {
+        self.parent = Some(Parent::Raw(parent));
         self
     }
 
