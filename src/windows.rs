@@ -133,6 +133,22 @@ impl<T> AppInner<T> {
     }
 
     pub fn poll(&mut self) -> Result<PollResult> {
+        if self.state.running.get() || self.state.data.try_borrow().is_err() {
+            return Err(Error::InsideEventHandler);
+        }
+
+        unsafe {
+            let mut msg: winuser::MSG = mem::zeroed();
+
+            let result = winuser::PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, winuser::PM_REMOVE);
+            if result != 0 {
+                winuser::TranslateMessage(&msg);
+                winuser::DispatchMessageW(&msg);
+
+                return Ok(PollResult::Event);
+            }
+        }
+
         Ok(PollResult::NoEvent)
     }
 
