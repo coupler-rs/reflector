@@ -34,11 +34,11 @@ impl<T> AppInner<T> {
         Ok(AppInner { state: build(&cx)? })
     }
 
-    pub fn run(&self) -> Result<()> {
+    pub fn run(&mut self) -> Result<()> {
         Ok(())
     }
 
-    pub fn poll(&self) -> Result<PollResult> {
+    pub fn poll(&mut self) -> Result<PollResult> {
         Ok(PollResult::NoEvent)
     }
 

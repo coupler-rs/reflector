@@ -104,7 +104,7 @@ impl<T> AppInner<T> {
         Ok(AppInner { state })
     }
 
-    pub fn run(&self) -> Result<()> {
+    pub fn run(&mut self) -> Result<()> {
         if self.state.running.get() || self.state.data.try_borrow().is_err() {
             return Err(Error::InsideEventHandler);
         }
@@ -132,7 +132,7 @@ impl<T> AppInner<T> {
         Ok(())
     }
 
-    pub fn poll(&self) -> Result<PollResult> {
+    pub fn poll(&mut self) -> Result<PollResult> {
         Ok(PollResult::NoEvent)
     }
 
