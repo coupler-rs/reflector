@@ -6,6 +6,7 @@ use crate::{
 use std::cell::{Cell, RefCell};
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
+use std::os::raw::c_int;
 use std::rc::Rc;
 use std::{fmt, mem, ptr, result};
 
@@ -400,7 +401,16 @@ impl WindowInner {
         state.update_cursor();
     }
 
-    pub fn set_mouse_position(&self, position: Point) {}
+    pub fn set_mouse_position(&self, position: Point) {
+        unsafe {
+            let mut point = windef::POINT {
+                x: position.x as c_int,
+                y: position.y as c_int,
+            };
+            winuser::ClientToScreen(self.hwnd, &mut point);
+            winuser::SetCursorPos(point.x, point.y);
+        }
+    }
 
     pub fn raw_window_handle(&self) -> RawWindowHandle {
         RawWindowHandle::Windows(WindowsHandle {
