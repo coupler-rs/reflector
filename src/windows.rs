@@ -39,7 +39,6 @@ impl fmt::Display for OsError {
 
 struct AppState<T> {
     class: minwindef::ATOM,
-    running: Cell<bool>,
     data: RefCell<Option<T>>,
 }
 
@@ -92,7 +91,6 @@ impl<T> AppInner<T> {
 
         let state = Rc::new(AppState {
             class,
-            running: Cell::new(false),
             data: RefCell::new(None),
         });
 
@@ -105,12 +103,11 @@ impl<T> AppInner<T> {
     }
 
     pub fn run(&mut self) -> Result<()> {
-        if self.state.running.get() || self.state.data.try_borrow().is_err() {
+        if self.state.data.try_borrow().is_err() {
             return Err(Error::InsideEventHandler);
         }
 
-        self.state.running.set(true);
-        while self.state.running.get() {
+        loop {
             unsafe {
                 let mut msg: winuser::MSG = mem::zeroed();
 
@@ -120,20 +117,17 @@ impl<T> AppInner<T> {
                         code: errhandlingapi::GetLastError(),
                     }));
                 } else if result == 0 {
-                    // ignore WM_QUIT messages
-                    continue;
+                    return Ok(());
                 }
 
                 winuser::TranslateMessage(&msg);
                 winuser::DispatchMessageW(&msg);
             }
         }
-
-        Ok(())
     }
 
     pub fn poll(&mut self) -> Result<()> {
-        if self.state.running.get() || self.state.data.try_borrow().is_err() {
+        if self.state.data.try_borrow().is_err() {
             return Err(Error::InsideEventHandler);
         }
 
@@ -185,7 +179,9 @@ pub struct AppContextInner<'a, T> {
 
 impl<'a, T> AppContextInner<'a, T> {
     pub fn exit(&self) {
-        self.state.running.set(false);
+        unsafe {
+            winuser::PostQuitMessage(0);
+        }
     }
 }
 
