@@ -25,6 +25,7 @@ pub type Result<T> = result::Result<T, Error>;
 pub enum Error {
     Os(platform::OsError),
     InsideEventHandler,
+    InvalidWindowHandle,
 }
 
 impl error::Error for Error {}
@@ -36,6 +37,7 @@ impl fmt::Display for Error {
             Error::InsideEventHandler => {
                 write!(fmt, "operation not supported inside an event handler")
             }
+            Error::InvalidWindowHandle => write!(fmt, "invalid window handle"),
         }
     }
 }
