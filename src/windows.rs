@@ -1,12 +1,12 @@
 use crate::{
-    App, AppContext, CloseError, Cursor, Error, Event, MouseButton, Point, Rect, Response, Result,
-    Window, WindowOptions,
+    App, AppContext, CloseError, Cursor, Error, Event, MouseButton, Point, PollResult, Rect,
+    Response, Result, Window, WindowOptions,
 };
 
 use std::cell::{Cell, RefCell};
 use std::ffi::OsStr;
-use std::os::windows::ffi::OsStrExt;
 use std::os::raw::c_int;
+use std::os::windows::ffi::OsStrExt;
 use std::rc::Rc;
 use std::{fmt, mem, ptr, result};
 
@@ -132,8 +132,8 @@ impl<T> AppInner<T> {
         Ok(())
     }
 
-    pub fn poll(&self) -> Result<()> {
-        Ok(())
+    pub fn poll(&self) -> Result<PollResult> {
+        Ok(PollResult::NoEvent)
     }
 
     fn take_data(&self) -> Option<T> {

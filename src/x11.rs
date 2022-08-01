@@ -1,5 +1,6 @@
 use crate::{
-    App, AppContext, CloseError, Cursor, Event, Rect, Response, Result, Window, WindowOptions,
+    App, AppContext, CloseError, Cursor, Event, PollResult, Rect, Response, Result, Window,
+    WindowOptions,
 };
 
 use std::fmt;
@@ -37,8 +38,8 @@ impl<T> AppInner<T> {
         Ok(())
     }
 
-    pub fn poll(&self) -> Result<()> {
-        Ok(())
+    pub fn poll(&self) -> Result<PollResult> {
+        Ok(PollResult::NoEvent)
     }
 
     pub fn into_inner(self) -> result::Result<T, CloseError<App<T>>> {
