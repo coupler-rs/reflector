@@ -407,20 +407,36 @@ impl WindowInner {
         })
     }
 
+    unsafe fn destroy(hwnd: windef::HWND) -> Result<()> {
+        let state_ptr = WindowState::from_hwnd(hwnd);
+
+        if winuser::DestroyWindow(hwnd) == 0 {
+            return Err(Error::Os(OsError {
+                code: errhandlingapi::GetLastError(),
+            }));
+        }
+
+        drop(Rc::from_raw(state_ptr));
+
+        winuser::KillTimer(hwnd, TIMER_ID);
+
+        Ok(())
+    }
+
     pub fn close(self) -> result::Result<(), CloseError<Window>> {
-        unimplemented!()
+        if let Err(error) = unsafe { Self::destroy(self.hwnd) } {
+            return Err(CloseError::new(error, Window::from_inner(self)));
+        }
+
+        mem::forget(self);
+
+        Ok(())
     }
 }
 
 impl Drop for WindowInner {
     fn drop(&mut self) {
-        unsafe {
-            winuser::KillTimer(self.hwnd, TIMER_ID);
-
-            let state_ptr = WindowState::from_hwnd(self.hwnd);
-            winuser::DestroyWindow(self.hwnd);
-            drop(Rc::from_raw(state_ptr));
-        }
+        let _ = unsafe { Self::destroy(self.hwnd) };
     }
 }
 

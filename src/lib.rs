@@ -279,10 +279,9 @@ impl WindowOptions {
         H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
         T: 'static,
     {
-        Ok(Window {
-            inner: platform::WindowInner::open(self, cx, handler)?,
-            phantom: PhantomData,
-        })
+        Ok(Window::from_inner(platform::WindowInner::open(
+            self, cx, handler,
+        )?))
     }
 }
 
@@ -293,6 +292,13 @@ pub struct Window {
 }
 
 impl Window {
+    fn from_inner(inner: platform::WindowInner) -> Window {
+        Window {
+            inner,
+            phantom: PhantomData,
+        }
+    }
+
     pub fn show(&self) {
         self.inner.show();
     }
