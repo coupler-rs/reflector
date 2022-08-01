@@ -76,6 +76,7 @@ impl<T> fmt::Display for CloseError<T> {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum PollResult {
     Event,
     NoEvent,
