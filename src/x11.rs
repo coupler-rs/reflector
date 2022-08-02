@@ -1,24 +1,43 @@
 use crate::{
-    App, AppContext, CloseError, Cursor, Event, Point, Rect, Response, Result, Window,
+    App, AppContext, CloseError, Cursor, Error, Event, Point, Rect, Response, Result, Window,
     WindowOptions,
 };
 
 use std::marker::PhantomData;
-use std::{fmt, result};
+use std::os::raw::c_int;
+use std::rc::Rc;
+use std::{fmt, ptr, result};
 
 use raw_window_handle::RawWindowHandle;
+use xcb_sys as xcb;
 
 #[derive(Debug)]
-pub struct OsError {}
+pub struct OsError {
+    code: c_int,
+}
 
 impl fmt::Display for OsError {
-    fn fmt(&self, _fmt: &mut fmt::Formatter) -> fmt::Result {
-        Ok(())
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{}", self.code)
+    }
+}
+
+struct AppState {
+    connection: *mut xcb::xcb_connection_t,
+    screen: *mut xcb::xcb_screen_t,
+}
+
+impl Drop for AppState {
+    fn drop(&mut self) {
+        unsafe {
+            xcb::xcb_disconnect(self.connection);
+        }
     }
 }
 
 pub struct AppInner<T> {
-    state: T,
+    state: Rc<AppState>,
+    data: Box<T>,
 }
 
 impl<T> AppInner<T> {
@@ -27,11 +46,34 @@ impl<T> AppInner<T> {
         F: FnOnce(&AppContext<T>) -> Result<T>,
         T: 'static,
     {
+        let state = unsafe {
+            let mut default_screen_index = 0;
+            let connection = xcb::xcb_connect(ptr::null(), &mut default_screen_index);
+
+            let error = xcb::xcb_connection_has_error(connection);
+            if error != 0 {
+                xcb::xcb_disconnect(connection);
+                return Err(Error::Os(OsError { code: error }));
+            }
+
+            let setup = xcb::xcb_get_setup(connection);
+            let mut roots_iter = xcb::xcb_setup_roots_iterator(setup);
+            for _ in 0..default_screen_index {
+                xcb::xcb_screen_next(&mut roots_iter);
+            }
+            let screen = roots_iter.data;
+
+            AppState { connection, screen }
+        };
+
         let cx = AppContext::from_inner(AppContextInner {
             phantom: PhantomData,
         });
 
-        Ok(AppInner { state: build(&cx)? })
+        Ok(AppInner {
+            state: Rc::new(state),
+            data: Box::new(build(&cx)?),
+        })
     }
 
     pub fn run(&mut self) -> Result<()> {
