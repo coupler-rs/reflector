@@ -3,7 +3,9 @@ use crate::{
     WindowOptions,
 };
 
-use std::marker::PhantomData;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ffi::c_void;
 use std::os::raw::c_int;
 use std::rc::Rc;
 use std::{fmt, ptr, result};
@@ -22,12 +24,27 @@ impl fmt::Display for OsError {
     }
 }
 
-struct AppState {
-    connection: *mut xcb::xcb_connection_t,
-    screen: *mut xcb::xcb_screen_t,
+trait RemoveHandler {
+    fn remove_handler(&self, window_id: xcb::xcb_window_t);
 }
 
-impl Drop for AppState {
+type Handler<T> = Rc<RefCell<dyn FnMut(&mut T, &AppContext<T>, Event) -> Response>>;
+
+struct Handlers<T>(RefCell<HashMap<xcb::xcb_window_t, Handler<T>>>);
+
+impl<T> RemoveHandler for Handlers<T> {
+    fn remove_handler(&self, window_id: xcb::xcb_window_t) {
+        self.0.borrow_mut().remove(&window_id);
+    }
+}
+
+struct AppState<H: ?Sized> {
+    connection: *mut xcb::xcb_connection_t,
+    screen: *mut xcb::xcb_screen_t,
+    handlers: H,
+}
+
+impl<H: ?Sized> Drop for AppState<H> {
     fn drop(&mut self) {
         unsafe {
             xcb::xcb_disconnect(self.connection);
@@ -36,7 +53,7 @@ impl Drop for AppState {
 }
 
 pub struct AppInner<T> {
-    state: Rc<AppState>,
+    state: Rc<AppState<Handlers<T>>>,
     data: Box<T>,
 }
 
@@ -63,17 +80,22 @@ impl<T> AppInner<T> {
             }
             let screen = roots_iter.data;
 
-            AppState { connection, screen }
+            Rc::new(AppState {
+                connection,
+                screen,
+                handlers: Handlers(RefCell::new(HashMap::new())),
+            })
         };
 
-        let cx = AppContext::from_inner(AppContextInner {
-            phantom: PhantomData,
-        });
+        let cx = AppContext::from_inner(AppContextInner { state: &state });
+        let data = build(&cx)?;
 
-        Ok(AppInner {
-            state: Rc::new(state),
-            data: Box::new(build(&cx)?),
-        })
+        let mut inner = AppInner {
+            state,
+            data: Box::new(data),
+        };
+
+        Ok(inner)
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -90,29 +112,87 @@ impl<T> AppInner<T> {
 }
 
 pub struct AppContextInner<'a, T> {
-    phantom: PhantomData<&'a T>,
+    state: &'a Rc<AppState<Handlers<T>>>,
 }
 
 impl<'a, T> AppContextInner<'a, T> {
     pub fn exit(&self) {}
 }
 
-pub struct WindowInner {}
+pub struct WindowInner {
+    window_id: xcb::xcb_window_t,
+    app_state: Rc<AppState<dyn RemoveHandler>>,
+}
 
 impl WindowInner {
     pub fn open<T, H>(
-        _options: &WindowOptions,
-        _cx: &AppContext<T>,
-        _handler: H,
+        options: &WindowOptions,
+        cx: &AppContext<T>,
+        handler: H,
     ) -> Result<WindowInner>
     where
+        T: 'static,
         H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
         H: 'static,
     {
-        Ok(WindowInner {})
+        let window_id = unsafe {
+            let window_id = xcb::xcb_generate_id(cx.inner.state.connection);
+
+            let parent_id = (*cx.inner.state.screen).root;
+
+            let value_mask = xcb::XCB_CW_EVENT_MASK;
+            let value_list = &[0];
+
+            let cookie = xcb::xcb_create_window_checked(
+                cx.inner.state.connection,
+                xcb::XCB_COPY_FROM_PARENT as u8,
+                window_id,
+                parent_id,
+                options.rect.x as i16,
+                options.rect.y as i16,
+                options.rect.width as u16,
+                options.rect.height as u16,
+                0,
+                xcb::XCB_WINDOW_CLASS_INPUT_OUTPUT as u16,
+                xcb::XCB_COPY_FROM_PARENT,
+                value_mask,
+                value_list.as_ptr() as *const c_void,
+            );
+
+            let error = xcb::xcb_request_check(cx.inner.state.connection, cookie);
+            if !error.is_null() {
+                let error_code = (*error).error_code;
+                libc::free(error as *mut c_void);
+                return Err(Error::Os(OsError {
+                    code: error_code as c_int,
+                }));
+            }
+
+            xcb::xcb_flush(cx.inner.state.connection);
+
+            let handler = Rc::new(RefCell::new(handler));
+            let handlers = &cx.inner.state.handlers;
+            handlers.0.borrow_mut().insert(window_id, handler);
+
+            window_id
+        };
+
+        Ok(WindowInner {
+            window_id,
+            app_state: cx.inner.state.clone(),
+        })
     }
 
-    pub fn show(&self) {}
+    pub fn show(&self) {
+        unsafe {
+            let cookie = xcb::xcb_map_window_checked(self.app_state.connection, self.window_id);
+
+            let error = xcb::xcb_request_check(self.app_state.connection, cookie);
+            if !error.is_null() {
+                libc::free(error as *mut c_void);
+            }
+        }
+    }
 
     pub fn hide(&self) {}
 
