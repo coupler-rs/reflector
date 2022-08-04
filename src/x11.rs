@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
-use std::{fmt, ptr, result};
+use std::{fmt, mem, ptr, result};
 
 use raw_window_handle::{unix::XcbHandle, HasRawWindowHandle, RawWindowHandle};
 use xcb_sys as xcb;
@@ -259,6 +259,37 @@ impl WindowInner {
     }
 
     pub fn close(self) -> result::Result<(), CloseError<Window>> {
-        unimplemented!()
+        if let Err(error) = self.destroy() {
+            return Err(CloseError::new(error, Window::from_inner(self)));
+        }
+
+        mem::forget(self);
+
+        Ok(())
+    }
+
+    fn destroy(&self) -> Result<()> {
+        unsafe {
+            let cookie = xcb::xcb_destroy_window_checked(self.app_state.connection, self.window_id);
+            let error = xcb::xcb_request_check(self.app_state.connection, cookie);
+
+            if !error.is_null() {
+                let error_code = (*error).error_code;
+                libc::free(error as *mut c_void);
+                return Err(Error::Os(OsError {
+                    code: error_code as c_int,
+                }));
+            }
+        }
+
+        self.app_state.handlers.remove_handler(self.window_id);
+
+        Ok(())
+    }
+}
+
+impl Drop for WindowInner {
+    fn drop(&mut self) {
+        let _ = self.destroy();
     }
 }
