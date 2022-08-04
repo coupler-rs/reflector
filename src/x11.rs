@@ -10,7 +10,7 @@ use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
 use std::{fmt, ptr, result};
 
-use raw_window_handle::RawWindowHandle;
+use raw_window_handle::{unix::XcbHandle, HasRawWindowHandle, RawWindowHandle};
 use xcb_sys as xcb;
 
 unsafe fn intern_atom(
@@ -251,7 +251,11 @@ impl WindowInner {
     pub fn set_mouse_position(&self, position: Point) {}
 
     pub fn raw_window_handle(&self) -> RawWindowHandle {
-        unimplemented!()
+        RawWindowHandle::Xcb(XcbHandle {
+            window: self.window_id,
+            connection: self.app_state.connection as *mut c_void,
+            ..XcbHandle::empty()
+        })
     }
 
     pub fn close(self) -> result::Result<(), CloseError<Window>> {
