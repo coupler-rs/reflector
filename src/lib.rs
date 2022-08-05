@@ -13,7 +13,6 @@ mod x11;
 #[cfg(target_os = "linux")]
 use x11 as platform;
 
-use std::ffi::{OsStr, OsString};
 use std::marker::PhantomData;
 use std::{error, fmt, result};
 
@@ -236,7 +235,7 @@ enum Parent<'a> {
 
 #[derive(Clone, Debug)]
 pub struct WindowOptions<'a> {
-    title: OsString,
+    title: String,
     rect: Rect,
     parent: Option<Parent<'a>>,
 }
@@ -244,7 +243,7 @@ pub struct WindowOptions<'a> {
 impl<'a> Default for WindowOptions<'a> {
     fn default() -> Self {
         WindowOptions {
-            title: OsString::new(),
+            title: String::new(),
             rect: Rect {
                 x: 0.0,
                 y: 0.0,
@@ -261,8 +260,8 @@ impl<'a> WindowOptions<'a> {
         Self::default()
     }
 
-    pub fn title<S: AsRef<OsStr>>(&mut self, title: S) -> &mut Self {
-        self.title = title.as_ref().to_os_string();
+    pub fn title<S: AsRef<str>>(&mut self, title: S) -> &mut Self {
+        self.title = title.as_ref().to_string();
         self
     }
 
