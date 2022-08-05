@@ -209,7 +209,7 @@ impl<T> AppInner<T> {
     }
 
     pub fn into_inner(self) -> result::Result<T, CloseError<App<T>>> {
-        unimplemented!()
+        Ok(*self.data)
     }
 }
 
