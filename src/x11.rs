@@ -13,31 +13,6 @@ use std::{fmt, mem, ptr, result};
 use raw_window_handle::{unix::XcbHandle, HasRawWindowHandle, RawWindowHandle};
 use xcb_sys as xcb;
 
-unsafe fn intern_atom(
-    connection: *mut xcb::xcb_connection_t,
-    name: &[u8],
-) -> xcb::xcb_intern_atom_cookie_t {
-    xcb::xcb_intern_atom(
-        connection,
-        1,
-        name.len() as u16,
-        name.as_ptr() as *const c_char,
-    )
-}
-
-unsafe fn intern_atom_reply(
-    connection: *mut xcb::xcb_connection_t,
-    cookie: xcb::xcb_intern_atom_cookie_t,
-) -> xcb::xcb_atom_t {
-    let reply = xcb::xcb_intern_atom_reply(connection, cookie, ptr::null_mut());
-    if reply.is_null() {
-        return xcb::XCB_NONE;
-    }
-    let atom = (*reply).atom;
-    libc::free(reply as *mut c_void);
-    atom
-}
-
 #[derive(Debug)]
 pub struct OsError {
     code: c_int,
@@ -46,6 +21,64 @@ pub struct OsError {
 impl fmt::Display for OsError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", self.code)
+    }
+}
+
+unsafe fn intern_atom(
+    connection: *mut xcb::xcb_connection_t,
+    name: &[u8],
+) -> xcb::xcb_intern_atom_cookie_t {
+    xcb::xcb_intern_atom(
+        connection,
+        0,
+        name.len() as u16,
+        name.as_ptr() as *const c_char,
+    )
+}
+
+unsafe fn intern_atom_reply(
+    connection: *mut xcb::xcb_connection_t,
+    cookie: xcb::xcb_intern_atom_cookie_t,
+) -> Result<xcb::xcb_atom_t> {
+    let mut error = ptr::null_mut();
+    let reply = xcb::xcb_intern_atom_reply(connection, cookie, &mut error);
+
+    if !error.is_null() {
+        let error_code = (*error).error_code;
+        libc::free(error as *mut c_void);
+        return Err(Error::Os(OsError {
+            code: error_code as c_int,
+        }));
+    }
+
+    if reply.is_null() {
+        let error = xcb::xcb_connection_has_error(connection);
+        return Err(Error::Os(OsError { code: error }));
+    }
+
+    let atom = (*reply).atom;
+    libc::free(reply as *mut c_void);
+
+    Ok(atom)
+}
+
+struct Atoms {
+    wm_protocols: xcb::xcb_atom_t,
+    wm_delete_window: xcb::xcb_atom_t,
+}
+
+impl Atoms {
+    unsafe fn new(connection: *mut xcb::xcb_connection_t) -> Result<Atoms> {
+        let wm_protocols_cookie = intern_atom(connection, b"WM_PROTOCOLS");
+        let wm_delete_window_cookie = intern_atom(connection, b"WM_DELETE_WINDOW");
+
+        let wm_protocols = intern_atom_reply(connection, wm_protocols_cookie)?;
+        let wm_delete_window = intern_atom_reply(connection, wm_delete_window_cookie)?;
+
+        Ok(Atoms {
+            wm_protocols,
+            wm_delete_window,
+        })
     }
 }
 
@@ -66,8 +99,7 @@ impl<T> RemoveHandler for Handlers<T> {
 struct AppState<H: ?Sized> {
     connection: *mut xcb::xcb_connection_t,
     screen: *mut xcb::xcb_screen_t,
-    wm_protocols: xcb::xcb_atom_t,
-    wm_delete_window: xcb::xcb_atom_t,
+    atoms: Atoms,
     handlers: H,
 }
 
@@ -107,17 +139,18 @@ impl<T> AppInner<T> {
             }
             let screen = roots_iter.data;
 
-            let wm_protocols_cookie = intern_atom(connection, b"WM_PROTOCOLS");
-            let wm_delete_window_cookie = intern_atom(connection, b"WM_DELETE_WINDOW");
-
-            let wm_protocols = intern_atom_reply(connection, wm_protocols_cookie);
-            let wm_delete_window = intern_atom_reply(connection, wm_delete_window_cookie);
+            let atoms = match Atoms::new(connection) {
+                Ok(atoms) => atoms,
+                Err(err) => {
+                    xcb::xcb_disconnect(connection);
+                    return Err(err);
+                }
+            };
 
             Rc::new(AppState {
                 connection,
                 screen,
-                wm_protocols,
-                wm_delete_window,
+                atoms,
                 handlers: Handlers(RefCell::new(HashMap::new())),
             })
         };
@@ -203,11 +236,11 @@ impl WindowInner {
                 }));
             }
 
-            let atoms = &[cx.inner.state.wm_delete_window];
+            let atoms = &[cx.inner.state.atoms.wm_delete_window];
             xcb::xcb_icccm_set_wm_protocols(
                 cx.inner.state.connection,
                 window_id,
-                cx.inner.state.wm_protocols,
+                cx.inner.state.atoms.wm_protocols,
                 atoms.len() as u32,
                 atoms.as_ptr() as *mut xcb::xcb_atom_t,
             );
