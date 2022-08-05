@@ -1,6 +1,6 @@
 use crate::{
-    App, AppContext, CloseError, Cursor, Error, Event, MouseButton, Point, Rect, Response, Result,
-    Window, WindowOptions,
+    App, AppContext, CloseError, Cursor, Error, Event, MouseButton, Parent, Point, Rect, Response,
+    Result, Window, WindowOptions,
 };
 
 use std::cell::{Cell, RefCell};
@@ -267,13 +267,19 @@ impl WindowInner {
         H: 'static,
     {
         let hwnd = unsafe {
-            let flags = winuser::WS_CLIPCHILDREN
-                | winuser::WS_CLIPSIBLINGS
-                | winuser::WS_CAPTION
-                | winuser::WS_SIZEBOX
-                | winuser::WS_SYSMENU
-                | winuser::WS_MINIMIZEBOX
-                | winuser::WS_MAXIMIZEBOX;
+            let window_name = to_wstring(&options.title);
+
+            let mut style = winuser::WS_CLIPCHILDREN | winuser::WS_CLIPSIBLINGS;
+
+            if let Some(Parent::Raw(_)) = options.parent {
+                style |= winuser::WS_CHILD;
+            } else {
+                style |= winuser::WS_CAPTION
+                    | winuser::WS_SIZEBOX
+                    | winuser::WS_SYSMENU
+                    | winuser::WS_MINIMIZEBOX
+                    | winuser::WS_MAXIMIZEBOX;
+            }
 
             let mut rect = windef::RECT {
                 left: options.rect.x.round() as i32,
@@ -281,20 +287,32 @@ impl WindowInner {
                 right: (options.rect.x + options.rect.width).round() as i32,
                 bottom: (options.rect.y + options.rect.height).round() as i32,
             };
-            winuser::AdjustWindowRectEx(&mut rect, flags, minwindef::FALSE, 0);
+            winuser::AdjustWindowRectEx(&mut rect, style, minwindef::FALSE, 0);
 
-            let window_name = to_wstring(&options.title);
+            let parent = if let Some(Parent::Raw(parent)) = options.parent {
+                if let RawWindowHandle::Windows(handle) = parent {
+                    if !handle.hwnd.is_null() {
+                        handle.hwnd as windef::HWND
+                    } else {
+                        return Err(Error::InvalidWindowHandle);
+                    }
+                } else {
+                    return Err(Error::InvalidWindowHandle);
+                }
+            } else {
+                ptr::null_mut()
+            };
 
             let hwnd = winuser::CreateWindowExW(
                 0,
                 cx.inner.state.class as *const ntdef::WCHAR,
                 window_name.as_ptr(),
-                flags,
+                style,
                 winuser::CW_USEDEFAULT,
                 winuser::CW_USEDEFAULT,
                 rect.right - rect.left,
                 rect.bottom - rect.top,
-                ptr::null_mut(),
+                parent,
                 ptr::null_mut(),
                 hinstance(),
                 ptr::null_mut(),
