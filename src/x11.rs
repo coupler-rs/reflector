@@ -3,14 +3,14 @@ use crate::{
     WindowOptions,
 };
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
 use std::{fmt, mem, ptr, result};
 
-use raw_window_handle::{unix::XcbHandle, HasRawWindowHandle, RawWindowHandle};
+use raw_window_handle::{unix::XcbHandle, RawWindowHandle};
 use xcb_sys as xcb;
 
 #[derive(Debug)]
@@ -100,6 +100,7 @@ struct AppState<H: ?Sized> {
     connection: *mut xcb::xcb_connection_t,
     screen: *mut xcb::xcb_screen_t,
     atoms: Atoms,
+    running: Cell<bool>,
     handlers: H,
 }
 
@@ -151,6 +152,7 @@ impl<T> AppInner<T> {
                 connection,
                 screen,
                 atoms,
+                running: Cell::new(false),
                 handlers: Handlers(RefCell::new(HashMap::new())),
             })
         };
@@ -158,7 +160,7 @@ impl<T> AppInner<T> {
         let cx = AppContext::from_inner(AppContextInner { state: &state });
         let data = build(&cx)?;
 
-        let mut inner = AppInner {
+        let inner = AppInner {
             state,
             data: Box::new(data),
         };
@@ -167,11 +169,43 @@ impl<T> AppInner<T> {
     }
 
     pub fn run(&mut self) -> Result<()> {
+        self.state.running.set(true);
+
+        while self.state.running.get() {
+            unsafe {
+                let event = xcb::xcb_wait_for_event(self.state.connection);
+                if event.is_null() {
+                    let error = xcb::xcb_connection_has_error(self.state.connection);
+                    return Err(Error::Os(OsError { code: error }));
+                }
+
+                self.handle_event(event);
+
+                libc::free(event as *mut c_void);
+            }
+        }
+
         Ok(())
     }
 
     pub fn poll(&mut self) -> Result<()> {
         Ok(())
+    }
+
+    unsafe fn handle_event(&mut self, event: *mut xcb::xcb_generic_event_t) {
+        match ((*event).response_type & !0x80) as u32 {
+            xcb::XCB_CLIENT_MESSAGE => {
+                let event = &*(event as *mut xcb::xcb_client_message_event_t);
+                if event.data.data32[0] == self.state.atoms.wm_delete_window {
+                    let handler = self.state.handlers.0.borrow().get(&event.window).cloned();
+                    if let Some(handler) = handler {
+                        let cx = AppContext::from_inner(AppContextInner { state: &self.state });
+                        handler.borrow_mut()(&mut self.data, &cx, Event::RequestClose);
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 
     pub fn into_inner(self) -> result::Result<T, CloseError<App<T>>> {
@@ -184,7 +218,9 @@ pub struct AppContextInner<'a, T> {
 }
 
 impl<'a, T> AppContextInner<'a, T> {
-    pub fn exit(&self) {}
+    pub fn exit(&self) {
+        self.state.running.set(false);
+    }
 }
 
 pub struct WindowInner {
