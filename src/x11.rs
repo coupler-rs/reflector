@@ -298,16 +298,17 @@ impl WindowInner {
 
     pub fn show(&self) {
         unsafe {
-            let cookie = xcb::xcb_map_window_checked(self.app_state.connection, self.window_id);
-
-            let error = xcb::xcb_request_check(self.app_state.connection, cookie);
-            if !error.is_null() {
-                libc::free(error as *mut c_void);
-            }
+            xcb::xcb_map_window(self.app_state.connection, self.window_id);
+            xcb::xcb_flush(self.app_state.connection);
         }
     }
 
-    pub fn hide(&self) {}
+    pub fn hide(&self) {
+        unsafe {
+            xcb::xcb_unmap_window(self.app_state.connection, self.window_id);
+            xcb::xcb_flush(self.app_state.connection);
+        }
+    }
 
     pub fn request_display(&self) {}
 
