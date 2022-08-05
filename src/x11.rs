@@ -338,7 +338,22 @@ impl WindowInner {
 
     pub fn set_cursor(&self, _cursor: Cursor) {}
 
-    pub fn set_mouse_position(&self, position: Point) {}
+    pub fn set_mouse_position(&self, position: Point) {
+        unsafe {
+            xcb::xcb_warp_pointer(
+                self.app_state.connection,
+                xcb::XCB_NONE,
+                self.window_id,
+                0,
+                0,
+                0,
+                0,
+                position.x as i16,
+                position.y as i16,
+            );
+            xcb::xcb_flush(self.app_state.connection);
+        }
+    }
 
     pub fn raw_window_handle(&self) -> RawWindowHandle {
         RawWindowHandle::Xcb(XcbHandle {
