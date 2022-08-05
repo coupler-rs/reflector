@@ -65,19 +65,27 @@ unsafe fn intern_atom_reply(
 struct Atoms {
     wm_protocols: xcb::xcb_atom_t,
     wm_delete_window: xcb::xcb_atom_t,
+    _net_wm_name: xcb::xcb_atom_t,
+    utf8_string: xcb::xcb_atom_t,
 }
 
 impl Atoms {
     unsafe fn new(connection: *mut xcb::xcb_connection_t) -> Result<Atoms> {
         let wm_protocols_cookie = intern_atom(connection, b"WM_PROTOCOLS");
         let wm_delete_window_cookie = intern_atom(connection, b"WM_DELETE_WINDOW");
+        let _net_wm_name_cookie = intern_atom(connection, b"_NET_WM_NAME");
+        let utf8_string_cookie = intern_atom(connection, b"UTF8_STRING");
 
         let wm_protocols = intern_atom_reply(connection, wm_protocols_cookie)?;
         let wm_delete_window = intern_atom_reply(connection, wm_delete_window_cookie)?;
+        let _net_wm_name = intern_atom_reply(connection, _net_wm_name_cookie)?;
+        let utf8_string = intern_atom_reply(connection, utf8_string_cookie)?;
 
         Ok(Atoms {
             wm_protocols,
             wm_delete_window,
+            _net_wm_name,
+            utf8_string,
         })
     }
 }
@@ -279,6 +287,18 @@ impl WindowInner {
                 cx.inner.state.atoms.wm_protocols,
                 atoms.len() as u32,
                 atoms.as_ptr() as *mut xcb::xcb_atom_t,
+            );
+
+            let title = options.title.as_bytes();
+            xcb::xcb_change_property(
+                cx.inner.state.connection,
+                xcb::XCB_PROP_MODE_REPLACE as u8,
+                window_id,
+                cx.inner.state.atoms._net_wm_name,
+                cx.inner.state.atoms.utf8_string,
+                8,
+                title.len() as u32,
+                title.as_ptr() as *const c_void,
             );
 
             xcb::xcb_flush(cx.inner.state.connection);
