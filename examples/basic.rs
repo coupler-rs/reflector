@@ -15,12 +15,11 @@ impl State {
         match event {
             Event::Frame => {
                 println!("frame");
-                self.window.request_display();
+                self.window
+                    .update_contents(&[0xFFFF00FF; 512 * 512], 512, 512);
             }
             Event::Display => {
                 println!("display");
-                self.window
-                    .update_contents(&[0xFFFF00FF; 512 * 512], 512, 512);
             }
             Event::MouseMove(pos) => {
                 println!("mouse move: {:?}", pos);

@@ -1,5 +1,5 @@
 use crate::{
-    App, AppContext, CloseError, Cursor, Error, Event, Point, Rect, Response, Result, Window,
+    App, AppContext, CloseError, Cursor, Error, Event, Point, Response, Result, Window,
     WindowOptions,
 };
 
@@ -337,10 +337,6 @@ impl WindowInner {
             xcb::xcb_flush(self.state.app_state.connection);
         }
     }
-
-    pub fn request_display(&self) {}
-
-    pub fn request_display_rect(&self, rect: Rect) {}
 
     pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {}
 

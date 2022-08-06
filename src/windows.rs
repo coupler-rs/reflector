@@ -1,5 +1,5 @@
 use crate::{
-    App, AppContext, CloseError, Cursor, Error, Event, MouseButton, Parent, Point, Rect, Response,
+    App, AppContext, CloseError, Cursor, Error, Event, MouseButton, Parent, Point, Response,
     Result, Window, WindowOptions,
 };
 
@@ -352,25 +352,6 @@ impl WindowInner {
     pub fn hide(&self) {
         unsafe {
             winuser::ShowWindow(self.hwnd, winuser::SW_HIDE);
-        }
-    }
-
-    pub fn request_display(&self) {
-        unsafe {
-            winuser::InvalidateRect(self.hwnd, ptr::null(), minwindef::FALSE);
-        }
-    }
-
-    pub fn request_display_rect(&self, rect: Rect) {
-        unsafe {
-            let rect = windef::RECT {
-                left: rect.x.round() as winnt::LONG,
-                top: rect.y.round() as winnt::LONG,
-                right: (rect.x + rect.width).round() as winnt::LONG,
-                bottom: (rect.y + rect.height).round() as winnt::LONG,
-            };
-
-            winuser::InvalidateRect(self.hwnd, &rect, minwindef::FALSE);
         }
     }
 

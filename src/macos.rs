@@ -1,6 +1,5 @@
 use crate::{
-    App, AppContext, CloseError, Cursor, Event, Point, Rect, Response, Result, Window,
-    WindowOptions,
+    App, AppContext, CloseError, Cursor, Event, Point, Response, Result, Window, WindowOptions,
 };
 
 use std::marker::PhantomData;
@@ -73,10 +72,6 @@ impl WindowInner {
     pub fn show(&self) {}
 
     pub fn hide(&self) {}
-
-    pub fn request_display(&self) {}
-
-    pub fn request_display_rect(&self, rect: Rect) {}
 
     pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {}
 

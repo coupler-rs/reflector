@@ -326,14 +326,6 @@ impl Window {
         self.inner.hide();
     }
 
-    pub fn request_display(&self) {
-        self.inner.request_display();
-    }
-
-    pub fn request_display_rect(&self, rect: Rect) {
-        self.inner.request_display_rect(rect);
-    }
-
     pub fn update_contents(&self, buffer: &[u32], width: usize, height: usize) {
         self.inner.update_contents(buffer, width, height);
     }
