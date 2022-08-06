@@ -502,7 +502,7 @@ unsafe extern "system" fn wnd_proc(
                     state.hdc.set(Some(hdc));
                 }
 
-                state.handler.handle_event(Event::Display);
+                state.handler.handle_event(Event::Expose(&[]));
 
                 state.hdc.set(None);
                 winuser::EndPaint(hwnd, &paint_struct);

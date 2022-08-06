@@ -18,8 +18,8 @@ impl State {
                 self.window
                     .update_contents(&[0xFFFF00FF; 512 * 512], 512, 512);
             }
-            Event::Display => {
-                println!("display");
+            Event::Expose(_) => {
+                println!("expose");
             }
             Event::MouseMove(pos) => {
                 println!("mouse move: {:?}", pos);

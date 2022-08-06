@@ -211,9 +211,9 @@ pub enum Cursor {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Event {
+pub enum Event<'a> {
     Frame,
-    Display,
+    Expose(&'a [Rect]),
     Close,
     MouseMove(Point),
     MouseDown(MouseButton),
