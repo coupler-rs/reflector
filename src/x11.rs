@@ -3,6 +3,7 @@ use crate::{
     WindowOptions,
 };
 
+use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ffi::c_void;
@@ -90,26 +91,26 @@ impl Atoms {
     }
 }
 
-trait RemoveHandler {
-    fn remove_handler(&self, window_id: xcb::xcb_window_t);
+trait RemoveWindow {
+    fn remove_window(&self, window_id: xcb::xcb_window_t);
 }
 
-type Handler<T> = Rc<RefCell<dyn FnMut(&mut T, &AppContext<T>, Event) -> Response>>;
+type Handler<T> = dyn FnMut(&mut T, &AppContext<T>, Event) -> Response;
 
-struct Handlers<T>(RefCell<HashMap<xcb::xcb_window_t, Handler<T>>>);
+struct Windows<T>(RefCell<HashMap<xcb::xcb_window_t, Rc<WindowState<Handler<T>>>>>);
 
-impl<T> RemoveHandler for Handlers<T> {
-    fn remove_handler(&self, window_id: xcb::xcb_window_t) {
+impl<T> RemoveWindow for Windows<T> {
+    fn remove_window(&self, window_id: xcb::xcb_window_t) {
         self.0.borrow_mut().remove(&window_id);
     }
 }
 
-struct AppState<H: ?Sized> {
+struct AppState<W: ?Sized> {
     connection: *mut xcb::xcb_connection_t,
     screen: *mut xcb::xcb_screen_t,
     atoms: Atoms,
     running: Cell<bool>,
-    handlers: H,
+    windows: W,
 }
 
 impl<H: ?Sized> Drop for AppState<H> {
@@ -121,7 +122,7 @@ impl<H: ?Sized> Drop for AppState<H> {
 }
 
 pub struct AppInner<T> {
-    state: Rc<AppState<Handlers<T>>>,
+    state: Rc<AppState<Windows<T>>>,
     data: Box<T>,
 }
 
@@ -161,7 +162,7 @@ impl<T> AppInner<T> {
                 screen,
                 atoms,
                 running: Cell::new(false),
-                handlers: Handlers(RefCell::new(HashMap::new())),
+                windows: Windows(RefCell::new(HashMap::new())),
             })
         };
 
@@ -205,10 +206,10 @@ impl<T> AppInner<T> {
             xcb::XCB_CLIENT_MESSAGE => {
                 let event = &*(event as *mut xcb::xcb_client_message_event_t);
                 if event.data.data32[0] == self.state.atoms.wm_delete_window {
-                    let handler = self.state.handlers.0.borrow().get(&event.window).cloned();
-                    if let Some(handler) = handler {
+                    let window = self.state.windows.0.borrow().get(&event.window).cloned();
+                    if let Some(window) = window {
                         let cx = AppContext::from_inner(AppContextInner { state: &self.state });
-                        handler.borrow_mut()(&mut self.data, &cx, Event::RequestClose);
+                        window.handler.borrow_mut()(&mut self.data, &cx, Event::RequestClose);
                     }
                 }
             }
@@ -222,7 +223,7 @@ impl<T> AppInner<T> {
 }
 
 pub struct AppContextInner<'a, T> {
-    state: &'a Rc<AppState<Handlers<T>>>,
+    state: &'a Rc<AppState<Windows<T>>>,
 }
 
 impl<'a, T> AppContextInner<'a, T> {
@@ -231,9 +232,14 @@ impl<'a, T> AppContextInner<'a, T> {
     }
 }
 
-pub struct WindowInner {
+struct WindowState<H: ?Sized> {
     window_id: xcb::xcb_window_t,
-    app_state: Rc<AppState<dyn RemoveHandler>>,
+    app_state: Rc<AppState<dyn RemoveWindow>>,
+    handler: RefCell<H>,
+}
+
+pub struct WindowInner {
+    state: Rc<WindowState<dyn Any>>,
 }
 
 impl WindowInner {
@@ -303,30 +309,32 @@ impl WindowInner {
 
             xcb::xcb_flush(cx.inner.state.connection);
 
-            let handler = Rc::new(RefCell::new(handler));
-            let handlers = &cx.inner.state.handlers;
-            handlers.0.borrow_mut().insert(window_id, handler);
-
             window_id
         };
 
-        Ok(WindowInner {
+        let state = Rc::new(WindowState {
             window_id,
             app_state: cx.inner.state.clone(),
-        })
+            handler: RefCell::new(handler),
+        });
+
+        let windows = &cx.inner.state.windows;
+        windows.0.borrow_mut().insert(window_id, state.clone());
+
+        Ok(WindowInner { state })
     }
 
     pub fn show(&self) {
         unsafe {
-            xcb::xcb_map_window(self.app_state.connection, self.window_id);
-            xcb::xcb_flush(self.app_state.connection);
+            xcb::xcb_map_window(self.state.app_state.connection, self.state.window_id);
+            xcb::xcb_flush(self.state.app_state.connection);
         }
     }
 
     pub fn hide(&self) {
         unsafe {
-            xcb::xcb_unmap_window(self.app_state.connection, self.window_id);
-            xcb::xcb_flush(self.app_state.connection);
+            xcb::xcb_unmap_window(self.state.app_state.connection, self.state.window_id);
+            xcb::xcb_flush(self.state.app_state.connection);
         }
     }
 
@@ -341,9 +349,9 @@ impl WindowInner {
     pub fn set_mouse_position(&self, position: Point) {
         unsafe {
             xcb::xcb_warp_pointer(
-                self.app_state.connection,
+                self.state.app_state.connection,
                 xcb::XCB_NONE,
-                self.window_id,
+                self.state.window_id,
                 0,
                 0,
                 0,
@@ -351,14 +359,14 @@ impl WindowInner {
                 position.x as i16,
                 position.y as i16,
             );
-            xcb::xcb_flush(self.app_state.connection);
+            xcb::xcb_flush(self.state.app_state.connection);
         }
     }
 
     pub fn raw_window_handle(&self) -> RawWindowHandle {
         RawWindowHandle::Xcb(XcbHandle {
-            window: self.window_id,
-            connection: self.app_state.connection as *mut c_void,
+            window: self.state.window_id,
+            connection: self.state.app_state.connection as *mut c_void,
             ..XcbHandle::empty()
         })
     }
@@ -375,8 +383,11 @@ impl WindowInner {
 
     fn destroy(&self) -> Result<()> {
         unsafe {
-            let cookie = xcb::xcb_destroy_window_checked(self.app_state.connection, self.window_id);
-            let error = xcb::xcb_request_check(self.app_state.connection, cookie);
+            let cookie = xcb::xcb_destroy_window_checked(
+                self.state.app_state.connection,
+                self.state.window_id,
+            );
+            let error = xcb::xcb_request_check(self.state.app_state.connection, cookie);
 
             if !error.is_null() {
                 let error_code = (*error).error_code;
