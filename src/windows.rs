@@ -216,7 +216,6 @@ where
 }
 
 struct WindowState {
-    hdc: Cell<Option<windef::HDC>>,
     mouse_down_count: Cell<isize>,
     cursor: Cell<Cursor>,
     handler: Box<dyn HandleEvent>,
@@ -324,7 +323,6 @@ impl WindowInner {
             }
 
             let state = Rc::into_raw(Rc::new(WindowState {
-                hdc: Cell::new(None),
                 mouse_down_count: Cell::new(0),
                 cursor: Cell::new(Cursor::Arrow),
                 handler: Box::new(Handler {
@@ -361,15 +359,8 @@ impl WindowInner {
             "invalid framebuffer dimensions"
         );
 
-        let state = unsafe { &*WindowState::from_hwnd(self.hwnd) };
-
         unsafe {
-            let hdc = if let Some(hdc) = state.hdc.get() {
-                hdc
-            } else {
-                winuser::GetDC(self.hwnd)
-            };
-
+            let hdc = winuser::GetDC(self.hwnd);
             if !hdc.is_null() {
                 let bitmap_info = wingdi::BITMAPINFO {
                     bmiHeader: wingdi::BITMAPINFOHEADER {
@@ -400,9 +391,7 @@ impl WindowInner {
                     wingdi::SRCCOPY,
                 );
 
-                if state.hdc.get().is_none() {
-                    winuser::ReleaseDC(self.hwnd, hdc);
-                }
+                winuser::ReleaseDC(self.hwnd, hdc);
             }
         }
     }
@@ -496,18 +485,10 @@ unsafe extern "system" fn wnd_proc(
                 return 1;
             }
             winuser::WM_PAINT => {
-                let mut paint_struct: winuser::PAINTSTRUCT = mem::zeroed();
-                let hdc = winuser::BeginPaint(hwnd, &mut paint_struct);
-                if !hdc.is_null() {
-                    state.hdc.set(Some(hdc));
-                }
-
                 state.handler.handle_event(Event::Expose(&[]));
 
-                state.hdc.set(None);
-                winuser::EndPaint(hwnd, &paint_struct);
-
-                return 0;
+                // Fall through to DefWindowProcW so that update region is validated.
+                // Without this, WM_PAINT will get called repeatedly
             }
             winuser::WM_MOUSEMOVE => {
                 let point = Point {
