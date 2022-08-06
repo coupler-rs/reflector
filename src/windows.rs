@@ -1,14 +1,15 @@
 use crate::{
-    App, AppContext, CloseError, Cursor, Error, Event, MouseButton, Parent, Point, Response,
+    App, AppContext, CloseError, Cursor, Error, Event, MouseButton, Parent, Point, Rect, Response,
     Result, Window, WindowOptions,
 };
 
+use std::alloc::{alloc, dealloc, Layout};
 use std::cell::{Cell, RefCell};
 use std::ffi::OsStr;
 use std::os::raw::c_int;
 use std::os::windows::ffi::OsStrExt;
 use std::rc::Rc;
-use std::{fmt, mem, ptr, result};
+use std::{fmt, mem, ptr, result, slice};
 
 use raw_window_handle::{windows::WindowsHandle, RawWindowHandle};
 use winapi::{
@@ -485,7 +486,38 @@ unsafe extern "system" fn wnd_proc(
                 return 1;
             }
             winuser::WM_PAINT => {
-                state.handler.handle_event(Event::Expose(&[]));
+                let mut rects = Vec::new();
+
+                let rgn = wingdi::CreateRectRgn(0, 0, 0, 0);
+                winuser::GetUpdateRgn(hwnd, rgn, 0);
+                let size = wingdi::GetRegionData(rgn, 0, ptr::null_mut());
+                if size != 0 {
+                    let align = mem::align_of::<wingdi::RGNDATA>();
+                    let layout = Layout::from_size_align(size as usize, align).unwrap();
+                    let ptr = alloc(layout) as *mut wingdi::RGNDATA;
+
+                    let result = wingdi::GetRegionData(rgn, size, ptr);
+                    if result == size {
+                        let count = (*ptr).rdh.nCount as usize;
+
+                        let buffer_ptr = ptr::addr_of!((*ptr).Buffer) as *const windef::RECT;
+                        let buffer = slice::from_raw_parts(buffer_ptr, count);
+
+                        rects.reserve_exact(count);
+                        for rect in buffer {
+                            rects.push(Rect {
+                                x: rect.left as f64,
+                                y: rect.top as f64,
+                                width: (rect.right - rect.left) as f64,
+                                height: (rect.bottom - rect.top) as f64,
+                            });
+                        }
+                    }
+
+                    dealloc(ptr as *mut u8, layout);
+                }
+
+                state.handler.handle_event(Event::Expose(&rects));
 
                 // Fall through to DefWindowProcW so that update region is validated.
                 // Without this, WM_PAINT will get called repeatedly
