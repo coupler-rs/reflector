@@ -36,7 +36,7 @@ impl State {
                 println!("scroll: {:?}", delta);
                 return Response::Capture;
             }
-            Event::RequestClose => {
+            Event::Close => {
                 cx.exit();
             }
         }

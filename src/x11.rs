@@ -209,7 +209,7 @@ impl<T> AppInner<T> {
                     let window = self.state.windows.0.borrow().get(&event.window).cloned();
                     if let Some(window) = window {
                         let cx = AppContext::from_inner(AppContextInner { state: &self.state });
-                        window.handler.borrow_mut()(&mut self.data, &cx, Event::RequestClose);
+                        window.handler.borrow_mut()(&mut self.data, &cx, Event::Close);
                     }
                 }
             }

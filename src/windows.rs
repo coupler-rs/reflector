@@ -589,7 +589,7 @@ unsafe extern "system" fn wnd_proc(
                 }
             }
             winuser::WM_CLOSE => {
-                state.handler.handle_event(Event::RequestClose);
+                state.handler.handle_event(Event::Close);
                 return 0;
             }
             _ => {}
