@@ -396,7 +396,8 @@ impl WindowInner {
             }
         }
 
-        self.app_state.handlers.remove_handler(self.window_id);
+        let windows = &self.state.app_state.windows;
+        windows.remove_window(self.state.window_id);
 
         Ok(())
     }
