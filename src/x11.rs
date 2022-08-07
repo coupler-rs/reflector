@@ -369,7 +369,37 @@ impl WindowInner {
     }
 
     pub fn present(&self, bitmap: Bitmap) {
+        self.present_inner(bitmap, None);
+    }
+
+    pub fn present_partial(&self, bitmap: Bitmap, rects: &[Rect]) {
+        self.present_inner(bitmap, Some(rects));
+    }
+
+    fn present_inner(&self, bitmap: Bitmap, rects: Option<&[Rect]>) {
         unsafe {
+            if let Some(rects) = rects {
+                let mut xcb_rects = Vec::with_capacity(rects.len());
+                for rect in rects {
+                    xcb_rects.push(xcb::xcb_rectangle_t {
+                        x: rect.x.round() as i16,
+                        y: rect.y.round() as i16,
+                        width: rect.width.round() as u16,
+                        height: rect.height.round() as u16,
+                    });
+                }
+
+                xcb::xcb_set_clip_rectangles(
+                    self.state.app_state.connection,
+                    xcb::XCB_CLIP_ORDERING_UNSORTED as u8,
+                    self.state.gc_id,
+                    0,
+                    0,
+                    xcb_rects.len() as u32,
+                    xcb_rects.as_ptr(),
+                );
+            }
+
             xcb::xcb_put_image(
                 self.state.app_state.connection,
                 xcb::XCB_IMAGE_FORMAT_Z_PIXMAP as u8,
@@ -384,11 +414,22 @@ impl WindowInner {
                 (bitmap.data().len() * mem::size_of::<u32>()) as u32,
                 bitmap.data().as_ptr() as *const u8,
             );
+
+            if rects.is_some() {
+                xcb::xcb_set_clip_rectangles(
+                    self.state.app_state.connection,
+                    xcb::XCB_CLIP_ORDERING_UNSORTED as u8,
+                    self.state.gc_id,
+                    0,
+                    0,
+                    0,
+                    ptr::null(),
+                );
+            }
+
             xcb::xcb_flush(self.state.app_state.connection);
         }
     }
-
-    pub fn present_partial(&self, bitmap: Bitmap, rects: &[Rect]) {}
 
     pub fn set_cursor(&self, _cursor: Cursor) {}
 
