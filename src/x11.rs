@@ -203,6 +203,25 @@ impl<T> AppInner<T> {
 
     unsafe fn handle_event(&mut self, event: *mut xcb::xcb_generic_event_t) {
         match ((*event).response_type & !0x80) as u32 {
+            xcb::XCB_EXPOSE => {
+                let event = &*(event as *mut xcb_sys::xcb_expose_event_t);
+                let window = self.state.windows.0.borrow().get(&event.window).cloned();
+                if let Some(window) = window {
+                    window.expose_rects.borrow_mut().push(Rect {
+                        x: event.x as f64,
+                        y: event.y as f64,
+                        width: event.width as f64,
+                        height: event.height as f64,
+                    });
+
+                    if event.count == 0 {
+                        let rects = window.expose_rects.take();
+
+                        let cx = AppContext::from_inner(AppContextInner { state: &self.state });
+                        window.handler.borrow_mut()(&mut self.data, &cx, Event::Expose(&rects));
+                    }
+                }
+            }
             xcb::XCB_CLIENT_MESSAGE => {
                 let event = &*(event as *mut xcb::xcb_client_message_event_t);
                 if event.data.data32[0] == self.state.atoms.wm_delete_window {
@@ -234,6 +253,7 @@ impl<'a, T> AppContextInner<'a, T> {
 
 struct WindowState<H: ?Sized> {
     window_id: xcb::xcb_window_t,
+    expose_rects: RefCell<Vec<Rect>>,
     app_state: Rc<AppState<dyn RemoveWindow>>,
     handler: RefCell<H>,
 }
@@ -259,7 +279,7 @@ impl WindowInner {
             let parent_id = (*cx.inner.state.screen).root;
 
             let value_mask = xcb::XCB_CW_EVENT_MASK;
-            let value_list = &[0];
+            let value_list = &[xcb::XCB_EVENT_MASK_EXPOSURE];
 
             let cookie = xcb::xcb_create_window_checked(
                 cx.inner.state.connection,
@@ -314,6 +334,7 @@ impl WindowInner {
 
         let state = Rc::new(WindowState {
             window_id,
+            expose_rects: RefCell::new(Vec::new()),
             app_state: cx.inner.state.clone(),
             handler: RefCell::new(handler),
         });
