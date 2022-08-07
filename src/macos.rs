@@ -75,6 +75,8 @@ impl WindowInner {
 
     pub fn present(&self, framebuffer: &[u32], width: usize, height: usize) {}
 
+    pub fn present_partial(&self, bitmap: Bitmap, rects: &[Rect]) {}
+
     pub fn set_cursor(&self, _cursor: Cursor) {}
 
     pub fn set_mouse_position(&self, position: Point) {}

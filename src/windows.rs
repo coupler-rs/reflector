@@ -392,6 +392,8 @@ impl WindowInner {
         }
     }
 
+    pub fn present_partial(&self, bitmap: Bitmap, rects: &[Rect]) {}
+
     pub fn set_cursor(&self, cursor: Cursor) {
         let state = unsafe { &*WindowState::from_hwnd(self.hwnd) };
 

@@ -371,6 +371,10 @@ impl Window {
         self.inner.present(bitmap);
     }
 
+    pub fn present_partial(&self, bitmap: Bitmap, rects: &[Rect]) {
+        self.inner.present_partial(bitmap, rects);
+    }
+
     pub fn set_cursor(&self, cursor: Cursor) {
         self.inner.set_cursor(cursor);
     }
