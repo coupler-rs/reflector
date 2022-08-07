@@ -6,6 +6,7 @@ use crate::{
 use std::alloc::{alloc, dealloc, Layout};
 use std::cell::{Cell, RefCell};
 use std::ffi::{c_void, OsStr};
+use std::mem::MaybeUninit;
 use std::os::raw::c_int;
 use std::os::windows::ffi::OsStrExt;
 use std::rc::Rc;
@@ -355,9 +356,69 @@ impl WindowInner {
     }
 
     pub fn present(&self, bitmap: Bitmap) {
+        self.present_inner(bitmap, None);
+    }
+
+    pub fn present_partial(&self, bitmap: Bitmap, rects: &[Rect]) {
+        self.present_inner(bitmap, Some(rects));
+    }
+
+    fn present_inner(&self, bitmap: Bitmap, rects: Option<&[Rect]>) {
         unsafe {
             let hdc = winuser::GetDC(self.hwnd);
             if !hdc.is_null() {
+                if let Some(rects) = rects {
+                    let (layout, _) = Layout::new::<wingdi::RGNDATAHEADER>()
+                        .extend(Layout::array::<windef::RECT>(rects.len()).unwrap())
+                        .unwrap();
+                    let ptr = alloc(layout) as *mut wingdi::RGNDATA;
+
+                    let buffer_ptr = ptr::addr_of!((*ptr).Buffer) as *mut MaybeUninit<windef::RECT>;
+                    let buffer = slice::from_raw_parts_mut(buffer_ptr, rects.len());
+                    for (src, dst) in rects.iter().zip(buffer.iter_mut()) {
+                        dst.write(windef::RECT {
+                            left: src.x.round() as i32,
+                            top: src.y.round() as i32,
+                            right: (src.x + src.width).round() as i32,
+                            bottom: (src.y + src.height).round() as i32,
+                        });
+                    }
+
+                    let buffer =
+                        slice::from_raw_parts(buffer_ptr as *const windef::RECT, rects.len());
+                    let bounds = if buffer.is_empty() {
+                        windef::RECT {
+                            left: 0,
+                            top: 0,
+                            right: 0,
+                            bottom: 0,
+                        }
+                    } else {
+                        let mut bounds = buffer[0];
+                        for rect in buffer {
+                            bounds.left = bounds.left.min(rect.left);
+                            bounds.top = bounds.top.min(rect.top);
+                            bounds.right = bounds.right.max(rect.right);
+                            bounds.bottom = bounds.bottom.max(rect.bottom);
+                        }
+                        bounds
+                    };
+
+                    (*ptr).rdh = wingdi::RGNDATAHEADER {
+                        dwSize: mem::size_of::<wingdi::RGNDATAHEADER>() as u32,
+                        iType: wingdi::RDH_RECTANGLES,
+                        nCount: rects.len() as u32,
+                        nRgnSize: layout.size() as u32,
+                        rcBound: bounds,
+                    };
+
+                    let rgn = wingdi::ExtCreateRegion(ptr::null(), layout.size() as u32, ptr);
+                    wingdi::SelectClipRgn(hdc, rgn);
+                    wingdi::DeleteObject(rgn as *mut c_void);
+
+                    dealloc(ptr as *mut u8, layout);
+                }
+
                 let bitmap_info = wingdi::BITMAPINFO {
                     bmiHeader: wingdi::BITMAPINFOHEADER {
                         biSize: mem::size_of::<wingdi::BITMAPINFOHEADER>() as u32,
@@ -387,12 +448,14 @@ impl WindowInner {
                     wingdi::SRCCOPY,
                 );
 
+                if rects.is_some() {
+                    wingdi::SelectClipRgn(hdc, ptr::null_mut());
+                }
+
                 winuser::ReleaseDC(self.hwnd, hdc);
             }
         }
     }
-
-    pub fn present_partial(&self, bitmap: Bitmap, rects: &[Rect]) {}
 
     pub fn set_cursor(&self, cursor: Cursor) {
         let state = unsafe { &*WindowState::from_hwnd(self.hwnd) };
