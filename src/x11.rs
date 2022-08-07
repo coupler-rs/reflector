@@ -253,6 +253,7 @@ impl<'a, T> AppContextInner<'a, T> {
 
 struct WindowState<H: ?Sized> {
     window_id: xcb::xcb_window_t,
+    gc_id: xcb::xcb_gcontext_t,
     expose_rects: RefCell<Vec<Rect>>,
     app_state: Rc<AppState<dyn RemoveWindow>>,
     handler: RefCell<H>,
@@ -273,7 +274,7 @@ impl WindowInner {
         H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
         H: 'static,
     {
-        let window_id = unsafe {
+        let state = unsafe {
             let window_id = xcb::xcb_generate_id(cx.inner.state.connection);
 
             let parent_id = (*cx.inner.state.screen).root;
@@ -327,20 +328,28 @@ impl WindowInner {
                 title.as_ptr() as *const c_void,
             );
 
+            let gc_id = xcb::xcb_generate_id(cx.inner.state.connection);
+            xcb::xcb_create_gc(
+                cx.inner.state.connection,
+                gc_id,
+                window_id,
+                0,
+                ptr::null(),
+            );
+
             xcb::xcb_flush(cx.inner.state.connection);
 
-            window_id
+            Rc::new(WindowState {
+                window_id,
+                gc_id,
+                expose_rects: RefCell::new(Vec::new()),
+                app_state: cx.inner.state.clone(),
+                handler: RefCell::new(handler),
+            })
         };
 
-        let state = Rc::new(WindowState {
-            window_id,
-            expose_rects: RefCell::new(Vec::new()),
-            app_state: cx.inner.state.clone(),
-            handler: RefCell::new(handler),
-        });
-
         let windows = &cx.inner.state.windows;
-        windows.0.borrow_mut().insert(window_id, state.clone());
+        windows.0.borrow_mut().insert(state.window_id, state.clone());
 
         Ok(WindowInner { state })
     }
@@ -359,7 +368,25 @@ impl WindowInner {
         }
     }
 
-    pub fn present(&self, bitmap: Bitmap) {}
+    pub fn present(&self, bitmap: Bitmap) {
+        unsafe {
+            xcb::xcb_put_image(
+                self.state.app_state.connection,
+                xcb::XCB_IMAGE_FORMAT_Z_PIXMAP as u8,
+                self.state.window_id,
+                self.state.gc_id,
+                bitmap.width() as u16,
+                bitmap.height() as u16,
+                0,
+                0,
+                0,
+                24,
+                (bitmap.data().len() * mem::size_of::<u32>()) as u32,
+                bitmap.data().as_ptr() as *const u8,
+            );
+            xcb::xcb_flush(self.state.app_state.connection);
+        }
+    }
 
     pub fn present_partial(&self, bitmap: Bitmap, rects: &[Rect]) {}
 
