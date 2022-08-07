@@ -511,6 +511,7 @@ unsafe extern "system" fn wnd_proc(
 
                     dealloc(ptr as *mut u8, layout);
                 }
+                wingdi::DeleteObject(rgn as *mut c_void);
 
                 state.handler.handle_event(Event::Expose(&rects));
 
