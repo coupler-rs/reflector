@@ -5,7 +5,7 @@ use crate::{
 
 use std::alloc::{alloc, dealloc, Layout};
 use std::cell::{Cell, RefCell};
-use std::ffi::OsStr;
+use std::ffi::{c_void, OsStr};
 use std::os::raw::c_int;
 use std::os::windows::ffi::OsStrExt;
 use std::rc::Rc;
@@ -412,7 +412,7 @@ impl WindowInner {
 
     pub fn raw_window_handle(&self) -> RawWindowHandle {
         RawWindowHandle::Windows(WindowsHandle {
-            hwnd: self.hwnd as *mut std::ffi::c_void,
+            hwnd: self.hwnd as *mut c_void,
             ..WindowsHandle::empty()
         })
     }
