@@ -1,6 +1,6 @@
 use crate::{
-    App, AppContext, CloseError, Cursor, Error, Event, MouseButton, Parent, Point, Rect, Response,
-    Result, Window, WindowOptions,
+    App, AppContext, Bitmap, CloseError, Cursor, Error, Event, MouseButton, Parent, Point, Rect,
+    Response, Result, Window, WindowOptions,
 };
 
 use std::alloc::{alloc, dealloc, Layout};
@@ -354,20 +354,15 @@ impl WindowInner {
         }
     }
 
-    pub fn update_contents(&self, buffer: &[u32], width: usize, height: usize) {
-        assert!(
-            width * height == buffer.len(),
-            "invalid framebuffer dimensions"
-        );
-
+    pub fn present(&self, bitmap: Bitmap) {
         unsafe {
             let hdc = winuser::GetDC(self.hwnd);
             if !hdc.is_null() {
                 let bitmap_info = wingdi::BITMAPINFO {
                     bmiHeader: wingdi::BITMAPINFOHEADER {
                         biSize: mem::size_of::<wingdi::BITMAPINFOHEADER>() as u32,
-                        biWidth: width as i32,
-                        biHeight: -(height as i32),
+                        biWidth: bitmap.width() as i32,
+                        biHeight: -(bitmap.height() as i32),
                         biPlanes: 1,
                         biBitCount: 32,
                         biCompression: wingdi::BI_RGB,
@@ -380,13 +375,13 @@ impl WindowInner {
                     hdc,
                     0,
                     0,
-                    width as i32,
-                    height as i32,
+                    bitmap.width() as i32,
+                    bitmap.height() as i32,
                     0,
                     0,
-                    width as i32,
-                    height as i32,
-                    buffer.as_ptr() as *const ntdef::VOID,
+                    bitmap.width() as i32,
+                    bitmap.height() as i32,
+                    bitmap.data().as_ptr() as *const ntdef::VOID,
                     &bitmap_info,
                     wingdi::DIB_RGB_COLORS,
                     wingdi::SRCCOPY,

@@ -193,6 +193,40 @@ impl Rect {
     }
 }
 
+pub struct Bitmap<'a> {
+    data: &'a [u32],
+    width: usize,
+    height: usize,
+}
+
+impl<'a> Bitmap<'a> {
+    #[inline]
+    pub fn new(data: &'a [u32], width: usize, height: usize) -> Bitmap<'a> {
+        assert!(width * height == data.len(), "invalid bitmap dimensions");
+
+        Bitmap {
+            data,
+            width,
+            height,
+        }
+    }
+
+    #[inline]
+    pub fn data(&self) -> &'a [u32] {
+        self.data
+    }
+
+    #[inline]
+    pub fn width(&self) -> usize {
+        self.width
+    }
+
+    #[inline]
+    pub fn height(&self) -> usize {
+        self.height
+    }
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum MouseButton {
     Left,
@@ -333,8 +367,8 @@ impl Window {
         self.inner.hide();
     }
 
-    pub fn update_contents(&self, buffer: &[u32], width: usize, height: usize) {
-        self.inner.update_contents(buffer, width, height);
+    pub fn present(&self, bitmap: Bitmap) {
+        self.inner.present(bitmap);
     }
 
     pub fn set_cursor(&self, cursor: Cursor) {

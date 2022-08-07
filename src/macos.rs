@@ -73,7 +73,7 @@ impl WindowInner {
 
     pub fn hide(&self) {}
 
-    pub fn update_contents(&self, framebuffer: &[u32], width: usize, height: usize) {}
+    pub fn present(&self, framebuffer: &[u32], width: usize, height: usize) {}
 
     pub fn set_cursor(&self, _cursor: Cursor) {}
 

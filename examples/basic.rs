@@ -1,4 +1,4 @@
-use portlight::{App, AppContext, Event, Response, Size, Window, WindowOptions};
+use portlight::{App, AppContext, Bitmap, Event, Response, Size, Window, WindowOptions};
 
 struct State {
     window: Window,
@@ -16,7 +16,7 @@ impl State {
             Event::Frame => {
                 println!("frame");
                 self.window
-                    .update_contents(&[0xFFFF00FF; 512 * 512], 512, 512);
+                    .present(Bitmap::new(&[0xFFFF00FF; 512 * 512], 512, 512));
             }
             Event::Expose(rects) => {
                 println!("expose: {:?}", rects);
