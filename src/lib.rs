@@ -52,18 +52,22 @@ impl<T> CloseError<T> {
         CloseError { error, inner }
     }
 
+    #[inline]
     pub fn error(&self) -> &Error {
         &self.error
     }
 
+    #[inline]
     pub fn into_error(self) -> Error {
         self.error
     }
 
+    #[inline]
     pub fn into_inner(self) -> T {
         self.inner
     }
 
+    #[inline]
     pub fn into_parts(self) -> (Error, T) {
         (self.error, self.inner)
     }
@@ -150,6 +154,7 @@ pub struct Point {
 }
 
 impl Point {
+    #[inline]
     pub fn new(x: f64, y: f64) -> Point {
         Point { x, y }
     }
@@ -162,6 +167,7 @@ pub struct Size {
 }
 
 impl Size {
+    #[inline]
     pub fn new(width: f64, height: f64) -> Size {
         Size { width, height }
     }
@@ -176,6 +182,7 @@ pub struct Rect {
 }
 
 impl Rect {
+    #[inline]
     pub fn new(x: f64, y: f64, width: f64, height: f64) -> Rect {
         Rect {
             x,
