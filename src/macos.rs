@@ -1,5 +1,6 @@
 use crate::{
-    App, AppContext, CloseError, Cursor, Event, Point, Response, Result, Window, WindowOptions,
+    App, AppContext, Bitmap, CloseError, Cursor, Event, Point, Rect, Response, Result, Window,
+    WindowOptions,
 };
 
 use std::marker::PhantomData;
@@ -73,7 +74,7 @@ impl WindowInner {
 
     pub fn hide(&self) {}
 
-    pub fn present(&self, framebuffer: &[u32], width: usize, height: usize) {}
+    pub fn present(&self, bitmap: Bitmap) {}
 
     pub fn present_partial(&self, bitmap: Bitmap, rects: &[Rect]) {}
 

@@ -1,6 +1,6 @@
 use crate::{
-    App, AppContext, CloseError, Cursor, Error, Event, Point, Response, Result, Window,
-    WindowOptions,
+    App, AppContext, Bitmap, CloseError, Cursor, Error, Event, Point, Rect, Response, Result,
+    Window, WindowOptions,
 };
 
 use std::any::Any;
@@ -338,7 +338,7 @@ impl WindowInner {
         }
     }
 
-    pub fn present(&self, framebuffer: &[u32], width: usize, height: usize) {}
+    pub fn present(&self, bitmap: Bitmap) {}
 
     pub fn present_partial(&self, bitmap: Bitmap, rects: &[Rect]) {}
 
