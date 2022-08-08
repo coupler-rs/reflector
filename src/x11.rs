@@ -329,13 +329,7 @@ impl WindowInner {
             );
 
             let gc_id = xcb::xcb_generate_id(cx.inner.state.connection);
-            xcb::xcb_create_gc(
-                cx.inner.state.connection,
-                gc_id,
-                window_id,
-                0,
-                ptr::null(),
-            );
+            xcb::xcb_create_gc(cx.inner.state.connection, gc_id, window_id, 0, ptr::null());
 
             xcb::xcb_flush(cx.inner.state.connection);
 
@@ -348,8 +342,8 @@ impl WindowInner {
             })
         };
 
-        let windows = &cx.inner.state.windows;
-        windows.0.borrow_mut().insert(state.window_id, state.clone());
+        let windows = &cx.inner.state.windows.0;
+        windows.borrow_mut().insert(state.window_id, state.clone());
 
         Ok(WindowInner { state })
     }
