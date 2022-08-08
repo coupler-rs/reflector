@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
+use std::time::Duration;
 use std::{fmt, mem, ptr, result};
 
 use raw_window_handle::{unix::XcbHandle, RawWindowHandle};
@@ -23,6 +24,12 @@ impl fmt::Display for OsError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", self.code)
     }
+}
+
+pub struct TimerHandleInner {}
+
+impl TimerHandleInner {
+    pub fn cancel(self) {}
 }
 
 unsafe fn intern_atom(
@@ -246,6 +253,14 @@ pub struct AppContextInner<'a, T> {
 }
 
 impl<'a, T> AppContextInner<'a, T> {
+    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerHandleInner
+    where
+        H: 'static,
+        H: FnMut(&mut T, &AppContext<T>),
+    {
+        TimerHandleInner {}
+    }
+
     pub fn exit(&self) {
         self.state.running.set(false);
     }

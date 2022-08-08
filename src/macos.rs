@@ -4,6 +4,7 @@ use crate::{
 };
 
 use std::marker::PhantomData;
+use std::time::Duration;
 use std::{fmt, result};
 
 use raw_window_handle::RawWindowHandle;
@@ -15,6 +16,12 @@ impl fmt::Display for OsError {
     fn fmt(&self, _fmt: &mut fmt::Formatter) -> fmt::Result {
         Ok(())
     }
+}
+
+pub struct TimerHandleInner {}
+
+impl TimerHandleInner {
+    pub fn cancel(self) {}
 }
 
 pub struct AppInner<T> {
@@ -52,6 +59,14 @@ pub struct AppContextInner<'a, T> {
 }
 
 impl<'a, T> AppContextInner<'a, T> {
+    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerHandleInner
+    where
+        H: 'static,
+        H: FnMut(&mut T, &AppContext<T>),
+    {
+        TimerHandleInner {}
+    }
+
     pub fn exit(&self) {}
 }
 

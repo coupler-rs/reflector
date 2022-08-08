@@ -14,6 +14,7 @@ mod x11;
 use x11 as platform;
 
 use std::marker::PhantomData;
+use std::time::Duration;
 use std::{error, fmt, result};
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
@@ -81,6 +82,24 @@ impl<T> fmt::Display for CloseError<T> {
     }
 }
 
+pub struct TimerHandle {
+    inner: platform::TimerHandleInner,
+    // ensure !Send and !Sync on all platforms
+    phantom: PhantomData<*mut ()>,
+}
+
+impl TimerHandle {
+    pub fn cancel(self) {
+        self.inner.cancel();
+    }
+}
+
+impl fmt::Debug for TimerHandle {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("TimerHandle").finish_non_exhaustive()
+    }
+}
+
 pub struct App<T> {
     inner: platform::AppInner<T>,
     // ensure !Send and !Sync on all platforms
@@ -132,6 +151,17 @@ impl<'a, T> AppContext<'a, T> {
     fn from_inner(inner: platform::AppContextInner<T>) -> AppContext<T> {
         AppContext {
             inner,
+            phantom: PhantomData,
+        }
+    }
+
+    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerHandle
+    where
+        H: 'static,
+        H: FnMut(&mut T, &AppContext<T>),
+    {
+        TimerHandle {
+            inner: self.inner.set_timer(duration, handler),
             phantom: PhantomData,
         }
     }
@@ -253,7 +283,6 @@ pub enum Cursor {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Event<'a> {
-    Frame,
     Expose(&'a [Rect]),
     Close,
     MouseMove(Point),

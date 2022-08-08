@@ -10,6 +10,7 @@ use std::mem::MaybeUninit;
 use std::os::raw::c_int;
 use std::os::windows::ffi::OsStrExt;
 use std::rc::Rc;
+use std::time::Duration;
 use std::{fmt, mem, ptr, result, slice};
 
 use raw_window_handle::{windows::WindowsHandle, RawWindowHandle};
@@ -41,6 +42,12 @@ impl fmt::Display for OsError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", self.code)
     }
+}
+
+pub struct TimerHandleInner {}
+
+impl TimerHandleInner {
+    pub fn cancel(self) {}
 }
 
 struct AppState<T> {
@@ -181,6 +188,14 @@ pub struct AppContextInner<'a, T> {
 }
 
 impl<'a, T> AppContextInner<'a, T> {
+    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerHandleInner
+    where
+        H: 'static,
+        H: FnMut(&mut T, &AppContext<T>),
+    {
+        TimerHandleInner {}
+    }
+
     pub fn exit(&self) {
         unsafe {
             winuser::PostQuitMessage(0);
@@ -248,9 +263,6 @@ impl WindowState {
         }
     }
 }
-
-const TIMER_ID: usize = 1;
-const TIMER_INTERVAL: u32 = 16;
 
 pub struct WindowInner {
     hwnd: windef::HWND,
@@ -334,8 +346,6 @@ impl WindowInner {
             }));
 
             winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, state as isize);
-
-            winuser::SetTimer(hwnd, TIMER_ID, TIMER_INTERVAL, None);
 
             hwnd
         };
@@ -493,8 +503,6 @@ impl WindowInner {
 
         drop(Rc::from_raw(state_ptr));
 
-        winuser::KillTimer(hwnd, TIMER_ID);
-
         Ok(())
     }
 
@@ -528,12 +536,6 @@ unsafe extern "system" fn wnd_proc(
         let _ = Rc::into_raw(state_rc);
 
         match msg {
-            winuser::WM_TIMER => {
-                if wparam == TIMER_ID {
-                    state.handler.handle_event(Event::Frame);
-                }
-                return 0;
-            }
             winuser::WM_SETCURSOR => {
                 if minwindef::LOWORD(lparam as minwindef::DWORD)
                     == winuser::HTCLIENT as minwindef::WORD

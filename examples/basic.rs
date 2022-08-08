@@ -13,13 +13,10 @@ impl Drop for State {
 impl State {
     fn handle_event(&mut self, cx: &AppContext<Self>, event: Event) -> Response {
         match event {
-            Event::Frame => {
-                println!("frame");
-                self.window
-                    .present(Bitmap::new(&[0xFFFF00FF; 512 * 512], 512, 512));
-            }
             Event::Expose(rects) => {
                 println!("expose: {:?}", rects);
+                self.window
+                    .present(Bitmap::new(&[0xFFFF00FF; 512 * 512], 512, 512));
             }
             Event::MouseMove(pos) => {
                 println!("mouse move: {:?}", pos);
