@@ -239,6 +239,19 @@ impl<T> AppInner<T> {
                     }
                 }
             }
+            xcb::XCB_MOTION_NOTIFY => {
+                let event = &*(event as *mut xcb_sys::xcb_motion_notify_event_t);
+                let window = self.state.windows.0.borrow().get(&event.event).cloned();
+                if let Some(window) = window {
+                    let point = Point {
+                        x: event.event_x as f64,
+                        y: event.event_y as f64,
+                    };
+
+                    let cx = AppContext::from_inner(AppContextInner { state: &self.state });
+                    window.handler.borrow_mut()(&mut self.data, &cx, Event::MouseMove(point));
+                }
+            }
             _ => {}
         }
     }
@@ -295,7 +308,7 @@ impl WindowInner {
             let parent_id = (*cx.inner.state.screen).root;
 
             let value_mask = xcb::XCB_CW_EVENT_MASK;
-            let value_list = &[xcb::XCB_EVENT_MASK_EXPOSURE];
+            let value_list = &[xcb::XCB_EVENT_MASK_EXPOSURE | xcb::XCB_EVENT_MASK_POINTER_MOTION];
 
             let cookie = xcb::xcb_create_window_checked(
                 cx.inner.state.connection,
