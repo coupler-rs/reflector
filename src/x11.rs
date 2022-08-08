@@ -1,6 +1,6 @@
 use crate::{
-    App, AppContext, Bitmap, CloseError, Cursor, Error, Event, Point, Rect, Response, Result,
-    Window, WindowOptions,
+    App, AppContext, Bitmap, CloseError, Cursor, Error, Event, MouseButton, Point, Rect, Response,
+    Result, Window, WindowOptions,
 };
 
 use std::any::Any;
@@ -14,6 +14,27 @@ use std::{fmt, mem, ptr, result};
 
 use raw_window_handle::{unix::XcbHandle, RawWindowHandle};
 use xcb_sys as xcb;
+
+fn mouse_button_from_code(code: xcb::xcb_button_t) -> Option<MouseButton> {
+    match code {
+        1 => Some(MouseButton::Left),
+        2 => Some(MouseButton::Middle),
+        3 => Some(MouseButton::Right),
+        8 => Some(MouseButton::Back),
+        9 => Some(MouseButton::Forward),
+        _ => None,
+    }
+}
+
+fn scroll_delta_from_code(code: xcb::xcb_button_t) -> Option<Point> {
+    match code {
+        4 => Some(Point::new(0.0, 1.0)),
+        5 => Some(Point::new(0.0, -1.0)),
+        6 => Some(Point::new(-1.0, 0.0)),
+        7 => Some(Point::new(1.0, 0.0)),
+        _ => None,
+    }
+}
 
 #[derive(Debug)]
 pub struct OsError {
@@ -252,6 +273,29 @@ impl<T> AppInner<T> {
                     window.handler.borrow_mut()(&mut self.data, &cx, Event::MouseMove(point));
                 }
             }
+            xcb::XCB_BUTTON_PRESS => {
+                let event = &*(event as *mut xcb_sys::xcb_button_press_event_t);
+                let window = self.state.windows.0.borrow().get(&event.event).cloned();
+                if let Some(window) = window {
+                    if let Some(button) = mouse_button_from_code(event.detail) {
+                        let cx = AppContext::from_inner(AppContextInner { state: &self.state });
+                        window.handler.borrow_mut()(&mut self.data, &cx, Event::MouseDown(button));
+                    } else if let Some(delta) = scroll_delta_from_code(event.detail) {
+                        let cx = AppContext::from_inner(AppContextInner { state: &self.state });
+                        window.handler.borrow_mut()(&mut self.data, &cx, Event::Scroll(delta));
+                    }
+                }
+            }
+            xcb::XCB_BUTTON_RELEASE => {
+                let event = &*(event as *mut xcb_sys::xcb_button_release_event_t);
+                let window = self.state.windows.0.borrow().get(&event.event).cloned();
+                if let Some(window) = window {
+                    if let Some(button) = mouse_button_from_code(event.detail) {
+                        let cx = AppContext::from_inner(AppContextInner { state: &self.state });
+                        window.handler.borrow_mut()(&mut self.data, &cx, Event::MouseUp(button));
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -308,7 +352,10 @@ impl WindowInner {
             let parent_id = (*cx.inner.state.screen).root;
 
             let value_mask = xcb::XCB_CW_EVENT_MASK;
-            let value_list = &[xcb::XCB_EVENT_MASK_EXPOSURE | xcb::XCB_EVENT_MASK_POINTER_MOTION];
+            let value_list = &[xcb::XCB_EVENT_MASK_EXPOSURE
+                | xcb::XCB_EVENT_MASK_POINTER_MOTION
+                | xcb::XCB_EVENT_MASK_BUTTON_PRESS
+                | xcb::XCB_EVENT_MASK_BUTTON_RELEASE];
 
             let cookie = xcb::xcb_create_window_checked(
                 cx.inner.state.connection,
