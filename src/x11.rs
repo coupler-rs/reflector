@@ -7,6 +7,7 @@ use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::mem::MaybeUninit;
 use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
 use std::time::Duration;
@@ -532,7 +533,11 @@ impl WindowInner {
             return Err(CloseError::new(error, Window::from_inner(self)));
         }
 
-        mem::forget(self);
+        // Need to prevent WindowInner::drop from being run (since we already
+        // called destroy), but the state field still needs to get dropped.
+        let window = MaybeUninit::new(self);
+        let state = unsafe { ptr::read(ptr::addr_of!((*window.as_ptr()).state)) };
+        drop(state);
 
         Ok(())
     }
