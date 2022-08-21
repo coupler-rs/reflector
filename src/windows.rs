@@ -232,17 +232,14 @@ where
     }
 }
 
-struct WindowState {
+struct WindowState<H: ?Sized> {
+    hwnd: windef::HWND,
     mouse_down_count: Cell<isize>,
     cursor: Cell<Cursor>,
-    handler: Box<dyn HandleEvent>,
+    handler: H,
 }
 
-impl WindowState {
-    unsafe fn from_hwnd(hwnd: windef::HWND) -> *mut WindowState {
-        winuser::GetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA) as *mut WindowState
-    }
-
+impl WindowState<dyn HandleEvent> {
     fn update_cursor(&self) {
         unsafe {
             let hcursor = match self.cursor.get() {
@@ -265,7 +262,7 @@ impl WindowState {
 }
 
 pub struct WindowInner {
-    hwnd: windef::HWND,
+    state: Rc<WindowState<dyn HandleEvent>>,
 }
 
 impl WindowInner {
@@ -279,7 +276,7 @@ impl WindowInner {
         H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
         H: 'static,
     {
-        let hwnd = unsafe {
+        let state = unsafe {
             let window_name = to_wstring(&options.title);
 
             let mut style = winuser::WS_CLIPCHILDREN | winuser::WS_CLIPSIBLINGS;
@@ -336,32 +333,37 @@ impl WindowInner {
                 }));
             }
 
-            let state = Rc::into_raw(Rc::new(WindowState {
+            let state = Rc::new(WindowState {
+                hwnd,
                 mouse_down_count: Cell::new(0),
                 cursor: Cell::new(Cursor::Arrow),
-                handler: Box::new(Handler {
+                handler: Handler {
                     app_state: Rc::clone(cx.inner.state),
                     handler: RefCell::new(handler),
-                }),
-            }));
+                },
+            });
 
-            winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, state as isize);
+            // We can't store a wide pointer to the WindowState<dyn HandleEvent> in the window's
+            // user data, so we add an extra Box layer:
+            let state_dyn = Rc::clone(&state) as Rc<WindowState<dyn HandleEvent>>;
+            let state_ptr = Box::into_raw(Box::new(state_dyn));
+            winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, state_ptr as isize);
 
-            hwnd
+            state
         };
 
-        Ok(WindowInner { hwnd })
+        Ok(WindowInner { state })
     }
 
     pub fn show(&self) {
         unsafe {
-            winuser::ShowWindow(self.hwnd, winuser::SW_SHOWNORMAL);
+            winuser::ShowWindow(self.state.hwnd, winuser::SW_SHOWNORMAL);
         }
     }
 
     pub fn hide(&self) {
         unsafe {
-            winuser::ShowWindow(self.hwnd, winuser::SW_HIDE);
+            winuser::ShowWindow(self.state.hwnd, winuser::SW_HIDE);
         }
     }
 
@@ -375,7 +377,7 @@ impl WindowInner {
 
     fn present_inner(&self, bitmap: Bitmap, rects: Option<&[Rect]>) {
         unsafe {
-            let hdc = winuser::GetDC(self.hwnd);
+            let hdc = winuser::GetDC(self.state.hwnd);
             if !hdc.is_null() {
                 if let Some(rects) = rects {
                     let (layout, _) = Layout::new::<wingdi::RGNDATAHEADER>()
@@ -462,16 +464,14 @@ impl WindowInner {
                     wingdi::SelectClipRgn(hdc, ptr::null_mut());
                 }
 
-                winuser::ReleaseDC(self.hwnd, hdc);
+                winuser::ReleaseDC(self.state.hwnd, hdc);
             }
         }
     }
 
     pub fn set_cursor(&self, cursor: Cursor) {
-        let state = unsafe { &*WindowState::from_hwnd(self.hwnd) };
-
-        state.cursor.set(cursor);
-        state.update_cursor();
+        self.state.cursor.set(cursor);
+        self.state.update_cursor();
     }
 
     pub fn set_mouse_position(&self, position: Point) {
@@ -480,38 +480,38 @@ impl WindowInner {
                 x: position.x as c_int,
                 y: position.y as c_int,
             };
-            winuser::ClientToScreen(self.hwnd, &mut point);
+            winuser::ClientToScreen(self.state.hwnd, &mut point);
             winuser::SetCursorPos(point.x, point.y);
         }
     }
 
     pub fn raw_window_handle(&self) -> RawWindowHandle {
         RawWindowHandle::Windows(WindowsHandle {
-            hwnd: self.hwnd as *mut c_void,
+            hwnd: self.state.hwnd as *mut c_void,
             ..WindowsHandle::empty()
         })
     }
 
     unsafe fn destroy(hwnd: windef::HWND) -> Result<()> {
-        let state_ptr = WindowState::from_hwnd(hwnd);
-
         if winuser::DestroyWindow(hwnd) == 0 {
             return Err(Error::Os(OsError {
                 code: errhandlingapi::GetLastError(),
             }));
         }
 
-        drop(Rc::from_raw(state_ptr));
-
         Ok(())
     }
 
     pub fn close(self) -> result::Result<(), CloseError<Window>> {
-        if let Err(error) = unsafe { Self::destroy(self.hwnd) } {
+        if let Err(error) = unsafe { Self::destroy(self.state.hwnd) } {
             return Err(CloseError::new(error, Window::from_inner(self)));
         }
 
-        mem::forget(self);
+        // Need to prevent WindowInner::drop from being run (since we already
+        // called destroy), but the state field still needs to get dropped.
+        let window = MaybeUninit::new(self);
+        let state = unsafe { ptr::read(ptr::addr_of!((*window.as_ptr()).state)) };
+        drop(state);
 
         Ok(())
     }
@@ -519,7 +519,7 @@ impl WindowInner {
 
 impl Drop for WindowInner {
     fn drop(&mut self) {
-        let _ = unsafe { Self::destroy(self.hwnd) };
+        let _ = unsafe { Self::destroy(self.state.hwnd) };
     }
 }
 
@@ -529,11 +529,12 @@ unsafe extern "system" fn wnd_proc(
     wparam: minwindef::WPARAM,
     lparam: minwindef::LPARAM,
 ) -> minwindef::LRESULT {
-    let state_ptr = WindowState::from_hwnd(hwnd);
+    let state_ptr = winuser::GetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA)
+        as *mut Rc<WindowState<dyn HandleEvent>>;
     if !state_ptr.is_null() {
-        let state_rc = Rc::from_raw(state_ptr);
-        let state = Rc::clone(&state_rc);
-        let _ = Rc::into_raw(state_rc);
+        // Hold a reference to the WindowState for the duration of the wnd_proc, in case the
+        // window is closed during an event handler
+        let state = Rc::clone(&*state_ptr);
 
         match msg {
             winuser::WM_SETCURSOR => {
@@ -667,6 +668,10 @@ unsafe extern "system" fn wnd_proc(
             winuser::WM_CLOSE => {
                 state.handler.handle_event(Event::Close);
                 return 0;
+            }
+            winuser::WM_DESTROY => {
+                drop(Box::from_raw(state_ptr));
+                winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, 0);
             }
             _ => {}
         }
