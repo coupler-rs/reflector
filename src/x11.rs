@@ -38,13 +38,17 @@ fn scroll_delta_from_code(code: xcb::xcb_button_t) -> Option<Point> {
 }
 
 #[derive(Debug)]
-pub struct OsError {
-    code: c_int,
+pub enum OsError {
+    Xcb(c_int),
+    Message(&'static str),
 }
 
 impl fmt::Display for OsError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "{}", self.code)
+        match self {
+            OsError::Xcb(code) => write!(fmt, "{}", code),
+            OsError::Message(message) => write!(fmt, "{}", message),
+        }
     }
 }
 
@@ -76,14 +80,12 @@ unsafe fn intern_atom_reply(
     if !error.is_null() {
         let error_code = (*error).error_code;
         libc::free(error as *mut c_void);
-        return Err(Error::Os(OsError {
-            code: error_code as c_int,
-        }));
+        return Err(Error::Os(OsError::Xcb(error_code as c_int)));
     }
 
     if reply.is_null() {
         let error = xcb::xcb_connection_has_error(connection);
-        return Err(Error::Os(OsError { code: error }));
+        return Err(Error::Os(OsError::Xcb(error)));
     }
 
     let atom = (*reply).atom;
@@ -139,6 +141,8 @@ struct AppState<W: ?Sized> {
     screen: *mut xcb::xcb_screen_t,
     atoms: Atoms,
     shm_supported: bool,
+    cursor_context: *mut xcb::xcb_cursor_context_t,
+    cursor_cache: RefCell<HashMap<Cursor, xcb::xcb_cursor_t>>,
     running: Cell<bool>,
     windows: W,
 }
@@ -146,6 +150,11 @@ struct AppState<W: ?Sized> {
 impl<H: ?Sized> Drop for AppState<H> {
     fn drop(&mut self) {
         unsafe {
+            if let Some(cursor_id) = self.cursor_cache.borrow().get(&Cursor::None) {
+                xcb::xcb_free_cursor(self.connection, *cursor_id);
+            }
+            xcb::xcb_cursor_context_free(self.cursor_context);
+
             xcb::xcb_disconnect(self.connection);
         }
     }
@@ -169,7 +178,7 @@ impl<T> AppInner<T> {
             let error = xcb::xcb_connection_has_error(connection);
             if error != 0 {
                 xcb::xcb_disconnect(connection);
-                return Err(Error::Os(OsError { code: error }));
+                return Err(Error::Os(OsError::Xcb(error)));
             }
 
             let setup = xcb::xcb_get_setup(connection);
@@ -195,11 +204,22 @@ impl<T> AppInner<T> {
                 libc::free(shm_version as *mut c_void);
             }
 
+            let mut cursor_context = ptr::null_mut();
+            let error = xcb::xcb_cursor_context_new(connection, screen, &mut cursor_context);
+            if error < 0 {
+                xcb::xcb_disconnect(connection);
+                return Err(Error::Os(OsError::Message(
+                    "could not initialize xcb_cursor",
+                )));
+            }
+
             Rc::new(AppState {
                 connection,
                 screen,
                 atoms,
                 shm_supported,
+                cursor_context,
+                cursor_cache: RefCell::new(HashMap::new()),
                 running: Cell::new(false),
                 windows: Windows(RefCell::new(HashMap::new())),
             })
@@ -224,7 +244,7 @@ impl<T> AppInner<T> {
                 let event = xcb::xcb_wait_for_event(self.state.connection);
                 if event.is_null() {
                     let error = xcb::xcb_connection_has_error(self.state.connection);
-                    return Err(Error::Os(OsError { code: error }));
+                    return Err(Error::Os(OsError::Xcb(error)));
                 }
 
                 self.handle_event(event);
@@ -466,9 +486,7 @@ impl WindowInner {
             if !error.is_null() {
                 let error_code = (*error).error_code;
                 libc::free(error as *mut c_void);
-                return Err(Error::Os(OsError {
-                    code: error_code as c_int,
-                }));
+                return Err(Error::Os(OsError::Xcb(error_code as c_int)));
             }
 
             let atoms = &[cx.inner.state.atoms.wm_delete_window];
@@ -634,7 +652,68 @@ impl WindowInner {
         }
     }
 
-    pub fn set_cursor(&self, _cursor: Cursor) {}
+    pub fn set_cursor(&self, cursor: Cursor) {
+        unsafe {
+            let cursor_cache = &self.state.app_state.cursor_cache;
+            let cursor_id = *cursor_cache.borrow_mut().entry(cursor).or_insert_with(|| {
+                if cursor == Cursor::None {
+                    let cursor_id = xcb::xcb_generate_id(self.state.app_state.connection);
+                    let pixmap_id = xcb::xcb_generate_id(self.state.app_state.connection);
+                    xcb::xcb_create_pixmap(
+                        self.state.app_state.connection,
+                        1,
+                        pixmap_id,
+                        (*self.state.app_state.screen).root,
+                        1,
+                        1,
+                    );
+                    xcb::xcb_create_cursor(
+                        self.state.app_state.connection,
+                        cursor_id,
+                        pixmap_id,
+                        pixmap_id,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                    );
+                    xcb::xcb_free_pixmap(self.state.app_state.connection, pixmap_id);
+                    cursor_id
+                } else {
+                    let cursor_name = match cursor {
+                        Cursor::Arrow => &b"left_ptr\0"[..],
+                        Cursor::Crosshair => &b"crosshair\0"[..],
+                        Cursor::Hand => &b"hand2\0"[..],
+                        Cursor::IBeam => &b"text\0"[..],
+                        Cursor::No => &b"crossed_circle\0"[..],
+                        Cursor::SizeNs => &b"v_double_arrow\0"[..],
+                        Cursor::SizeWe => &b"h_double_arrow\0"[..],
+                        Cursor::SizeNesw => &b"fd_double_arrow\0"[..],
+                        Cursor::SizeNwse => &b"bd_double_arrow\0"[..],
+                        Cursor::Wait => &b"watch\0"[..],
+                        Cursor::None => &b"\0"[..],
+                    };
+                    xcb::xcb_cursor_load_cursor(
+                        self.state.app_state.cursor_context,
+                        cursor_name.as_ptr() as *const c_char,
+                    )
+                }
+            });
+
+            xcb::xcb_change_window_attributes(
+                self.state.app_state.connection,
+                self.state.window_id,
+                xcb::XCB_CW_CURSOR,
+                &cursor_id as *const xcb::xcb_cursor_t as *const c_void,
+            );
+
+            xcb::xcb_flush(self.state.app_state.connection);
+        }
+    }
 
     pub fn set_mouse_position(&self, position: Point) {
         unsafe {
@@ -688,9 +767,7 @@ impl WindowInner {
             if !error.is_null() {
                 let error_code = (*error).error_code;
                 libc::free(error as *mut c_void);
-                return Err(Error::Os(OsError {
-                    code: error_code as c_int,
-                }));
+                return Err(Error::Os(OsError::Xcb(error_code as c_int)));
             }
         }
 
