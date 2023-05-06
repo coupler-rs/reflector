@@ -237,6 +237,19 @@ impl<T> AppInner<T> {
     }
 
     pub fn poll(&mut self) -> Result<()> {
+        loop {
+            unsafe {
+                let event = xcb::xcb_poll_for_event(self.state.connection);
+                if event.is_null() {
+                    break;
+                }
+
+                self.handle_event(event);
+
+                libc::free(event as *mut c_void);
+            }
+        }
+
         Ok(())
     }
 
