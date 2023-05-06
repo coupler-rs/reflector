@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::mem::MaybeUninit;
 use std::os::raw::{c_char, c_int};
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::rc::Rc;
 use std::time::Duration;
 use std::{fmt, mem, ptr, result, slice};
@@ -346,6 +347,12 @@ impl<T> AppInner<T> {
 
     pub fn into_inner(self) -> result::Result<T, CloseError<App<T>>> {
         Ok(*self.data)
+    }
+}
+
+impl<T> AsRawFd for AppInner<T> {
+    fn as_raw_fd(&self) -> RawFd {
+        unsafe { xcb::xcb_get_file_descriptor(self.state.connection) }
     }
 }
 

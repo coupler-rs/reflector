@@ -141,6 +141,16 @@ impl<T> fmt::Debug for App<T> {
     }
 }
 
+#[cfg(target_os = "linux")]
+use std::os::unix::io::{AsRawFd, RawFd};
+
+#[cfg(target_os = "linux")]
+impl<T> AsRawFd for App<T> {
+    fn as_raw_fd(&self) -> RawFd {
+        self.inner.as_raw_fd()
+    }
+}
+
 pub struct AppContext<'a, T> {
     inner: platform::AppContextInner<'a, T>,
     // ensure !Send and !Sync on all platforms
