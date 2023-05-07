@@ -1,6 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::marker::PhantomData;
 use std::os::raw::{c_char, c_int};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::rc::Rc;
@@ -12,8 +13,7 @@ use xcb_sys as xcb;
 use super::window::WindowState;
 use super::{OsError, TimerHandleInner};
 use crate::{
-    App, AppContext, Cursor, Error, Event, IntoInnerError, MouseButton, Point, Rect, Response,
-    Result,
+    App, AppContext, Cursor, Error, Event, IntoInnerError, MouseButton, Point, Rect, Result,
 };
 
 fn mouse_button_from_code(code: xcb::xcb_button_t) -> Option<MouseButton> {
@@ -101,21 +101,7 @@ impl Atoms {
     }
 }
 
-pub trait RemoveWindow {
-    fn remove_window(&self, window_id: xcb::xcb_window_t);
-}
-
-type Handler<T> = dyn FnMut(&mut T, &AppContext<T>, Event) -> Response;
-
-pub struct Windows<T>(pub RefCell<HashMap<xcb::xcb_window_t, Rc<WindowState<Handler<T>>>>>);
-
-impl<T> RemoveWindow for Windows<T> {
-    fn remove_window(&self, window_id: xcb::xcb_window_t) {
-        self.0.borrow_mut().remove(&window_id);
-    }
-}
-
-pub struct AppState<W: ?Sized> {
+pub struct AppState {
     pub connection: *mut xcb::xcb_connection_t,
     pub screen: *mut xcb::xcb_screen_t,
     pub atoms: Atoms,
@@ -123,28 +109,33 @@ pub struct AppState<W: ?Sized> {
     pub cursor_context: *mut xcb::xcb_cursor_context_t,
     pub cursor_cache: RefCell<HashMap<Cursor, xcb::xcb_cursor_t>>,
     pub running: Cell<bool>,
-    pub windows: W,
+    pub windows: RefCell<HashMap<xcb::xcb_window_t, Rc<WindowState>>>,
 }
 
-impl<H: ?Sized> Drop for AppState<H> {
+impl Drop for AppState {
     fn drop(&mut self) {
         unsafe {
+            for (_window_id, window) in self.windows.take().drain() {
+                window.destroy(&self);
+            }
+
             if let Some(cursor_id) = self.cursor_cache.borrow().get(&Cursor::None) {
                 xcb::xcb_free_cursor(self.connection, *cursor_id);
             }
             xcb::xcb_cursor_context_free(self.cursor_context);
 
+            xcb::xcb_flush(self.connection);
             xcb::xcb_disconnect(self.connection);
         }
     }
 }
 
 pub struct AppInner<T> {
-    state: Rc<AppState<Windows<T>>>,
+    state: Rc<AppState>,
     data: Box<T>,
 }
 
-impl<T> AppInner<T> {
+impl<T: 'static> AppInner<T> {
     pub fn new<F>(build: F) -> Result<AppInner<T>>
     where
         F: FnOnce(&AppContext<T>) -> Result<T>,
@@ -200,11 +191,11 @@ impl<T> AppInner<T> {
                 cursor_context,
                 cursor_cache: RefCell::new(HashMap::new()),
                 running: Cell::new(false),
-                windows: Windows(RefCell::new(HashMap::new())),
+                windows: RefCell::new(HashMap::new()),
             })
         };
 
-        let cx = AppContext::from_inner(AppContextInner { state: &state });
+        let cx = AppContext::from_inner(AppContextInner::new(&state));
         let data = build(&cx)?;
 
         let inner = AppInner {
@@ -256,7 +247,7 @@ impl<T> AppInner<T> {
         match ((*event).response_type & !0x80) as u32 {
             xcb::XCB_EXPOSE => {
                 let event = &*(event as *mut xcb_sys::xcb_expose_event_t);
-                let window = self.state.windows.0.borrow().get(&event.window).cloned();
+                let window = self.state.windows.borrow().get(&event.window).cloned();
                 if let Some(window) = window {
                     window.expose_rects.borrow_mut().push(Rect {
                         x: event.x as f64,
@@ -267,55 +258,68 @@ impl<T> AppInner<T> {
 
                     if event.count == 0 {
                         let rects = window.expose_rects.take();
-
-                        let cx = AppContext::from_inner(AppContextInner { state: &self.state });
-                        window.handler.borrow_mut()(&mut self.data, &cx, Event::Expose(&rects));
+                        window.handler.borrow_mut()(
+                            &mut *self.data,
+                            &self.state,
+                            Event::Expose(&rects),
+                        );
                     }
                 }
             }
             xcb::XCB_CLIENT_MESSAGE => {
                 let event = &*(event as *mut xcb::xcb_client_message_event_t);
                 if event.data.data32[0] == self.state.atoms.wm_delete_window {
-                    let window = self.state.windows.0.borrow().get(&event.window).cloned();
+                    let window = self.state.windows.borrow().get(&event.window).cloned();
                     if let Some(window) = window {
-                        let cx = AppContext::from_inner(AppContextInner { state: &self.state });
-                        window.handler.borrow_mut()(&mut self.data, &cx, Event::Close);
+                        window.handler.borrow_mut()(&mut *self.data, &self.state, Event::Close);
                     }
                 }
             }
             xcb::XCB_MOTION_NOTIFY => {
                 let event = &*(event as *mut xcb_sys::xcb_motion_notify_event_t);
-                let window = self.state.windows.0.borrow().get(&event.event).cloned();
+                let window = self.state.windows.borrow().get(&event.event).cloned();
                 if let Some(window) = window {
                     let point = Point {
                         x: event.event_x as f64,
                         y: event.event_y as f64,
                     };
 
-                    let cx = AppContext::from_inner(AppContextInner { state: &self.state });
-                    window.handler.borrow_mut()(&mut self.data, &cx, Event::MouseMove(point));
+                    window.handler.borrow_mut()(
+                        &mut *self.data,
+                        &self.state,
+                        Event::MouseMove(point),
+                    );
                 }
             }
             xcb::XCB_BUTTON_PRESS => {
                 let event = &*(event as *mut xcb_sys::xcb_button_press_event_t);
-                let window = self.state.windows.0.borrow().get(&event.event).cloned();
+                let window = self.state.windows.borrow().get(&event.event).cloned();
                 if let Some(window) = window {
                     if let Some(button) = mouse_button_from_code(event.detail) {
-                        let cx = AppContext::from_inner(AppContextInner { state: &self.state });
-                        window.handler.borrow_mut()(&mut self.data, &cx, Event::MouseDown(button));
+                        window.handler.borrow_mut()(
+                            &mut *self.data,
+                            &self.state,
+                            Event::MouseDown(button),
+                        );
                     } else if let Some(delta) = scroll_delta_from_code(event.detail) {
-                        let cx = AppContext::from_inner(AppContextInner { state: &self.state });
-                        window.handler.borrow_mut()(&mut self.data, &cx, Event::Scroll(delta));
+                        window.handler.borrow_mut()(
+                            &mut *self.data,
+                            &self.state,
+                            Event::Scroll(delta),
+                        );
                     }
                 }
             }
             xcb::XCB_BUTTON_RELEASE => {
                 let event = &*(event as *mut xcb_sys::xcb_button_release_event_t);
-                let window = self.state.windows.0.borrow().get(&event.event).cloned();
+                let window = self.state.windows.borrow().get(&event.event).cloned();
                 if let Some(window) = window {
                     if let Some(button) = mouse_button_from_code(event.detail) {
-                        let cx = AppContext::from_inner(AppContextInner { state: &self.state });
-                        window.handler.borrow_mut()(&mut self.data, &cx, Event::MouseUp(button));
+                        window.handler.borrow_mut()(
+                            &mut *self.data,
+                            &self.state,
+                            Event::MouseUp(button),
+                        );
                     }
                 }
             }
@@ -335,10 +339,18 @@ impl<T> AsRawFd for AppInner<T> {
 }
 
 pub struct AppContextInner<'a, T> {
-    pub state: &'a Rc<AppState<Windows<T>>>,
+    pub state: &'a Rc<AppState>,
+    _marker: PhantomData<T>,
 }
 
 impl<'a, T> AppContextInner<'a, T> {
+    pub(super) fn new(state: &'a Rc<AppState>) -> AppContextInner<'a, T> {
+        AppContextInner {
+            state,
+            _marker: PhantomData,
+        }
+    }
+
     pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerHandleInner
     where
         H: 'static,

@@ -2,13 +2,13 @@ use std::any::Any;
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_int};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::{mem, ptr, slice};
 
 use raw_window_handle::{unix::XcbHandle, RawWindowHandle};
 use xcb_sys as xcb;
 
-use super::app::{AppState, RemoveWindow};
+use super::app::{AppContextInner, AppState};
 use super::OsError;
 use crate::{
     AppContext, Bitmap, Cursor, Error, Event, Point, Rect, Response, Result, WindowOptions,
@@ -22,22 +22,24 @@ pub struct ShmState {
     height: usize,
 }
 
-pub struct WindowState<H: ?Sized> {
+pub struct WindowState {
     pub window_id: xcb::xcb_window_t,
     pub gc_id: xcb::xcb_gcontext_t,
     pub shm_state: RefCell<Option<ShmState>>,
     pub expose_rects: RefCell<Vec<Rect>>,
-    pub app_state: Rc<AppState<dyn RemoveWindow>>,
-    pub handler: RefCell<H>,
+    pub handler: RefCell<Box<dyn FnMut(&mut dyn Any, &Rc<AppState>, Event) -> Response>>,
 }
 
-pub struct WindowInner {
-    state: Rc<WindowState<dyn Any>>,
-}
+impl WindowState {
+    pub unsafe fn destroy(&self, app_state: &AppState) {
+        self.deinit_shm(app_state);
 
-impl WindowInner {
-    unsafe fn init_shm<T>(cx: &AppContext<T>, width: usize, height: usize) -> Option<ShmState> {
-        if !cx.inner.state.shm_supported {
+        xcb::xcb_destroy_window(app_state.connection, self.window_id);
+        xcb::xcb_flush(app_state.connection);
+    }
+
+    unsafe fn init_shm(app_state: &AppState, width: usize, height: usize) -> Option<ShmState> {
+        if !app_state.shm_supported {
             return None;
         }
 
@@ -57,14 +59,10 @@ impl WindowInner {
                 return None;
             }
 
-            let shm_seg_id = xcb::xcb_generate_id(cx.inner.state.connection);
-            let cookie = xcb::xcb_shm_attach_checked(
-                cx.inner.state.connection,
-                shm_seg_id,
-                shm_id as u32,
-                0,
-            );
-            let error = xcb::xcb_request_check(cx.inner.state.connection, cookie);
+            let shm_seg_id = xcb::xcb_generate_id(app_state.connection);
+            let cookie =
+                xcb::xcb_shm_attach_checked(app_state.connection, shm_seg_id, shm_id as u32, 0);
+            let error = xcb::xcb_request_check(app_state.connection, cookie);
             if !error.is_null() {
                 libc::free(error as *mut c_void);
                 libc::shmdt(shm_ptr);
@@ -82,14 +80,25 @@ impl WindowInner {
         }
     }
 
-    unsafe fn deinit_shm(&self) {
-        if let Some(shm_state) = self.state.shm_state.take() {
-            unsafe {
-                xcb::xcb_shm_detach(self.state.app_state.connection, shm_state.shm_seg_id);
-                libc::shmdt(shm_state.shm_ptr);
-                libc::shmctl(shm_state.shm_id, libc::IPC_RMID, ptr::null_mut());
-            }
+    unsafe fn deinit_shm(&self, app_state: &AppState) {
+        if let Some(shm_state) = self.shm_state.take() {
+            xcb::xcb_shm_detach(app_state.connection, shm_state.shm_seg_id);
+            libc::shmdt(shm_state.shm_ptr);
+            libc::shmctl(shm_state.shm_id, libc::IPC_RMID, ptr::null_mut());
         }
+    }
+}
+
+pub struct WindowInner {
+    app_state: Weak<AppState>,
+    window_id: xcb::xcb_window_t,
+}
+
+impl WindowInner {
+    fn app_state(&self) -> Rc<AppState> {
+        self.app_state
+            .upgrade()
+            .expect("attempted to use Window after App has been dropped")
     }
 
     pub fn open<T, H>(
@@ -102,7 +111,7 @@ impl WindowInner {
         H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
         H: 'static,
     {
-        let state = unsafe {
+        unsafe {
             let window_id = xcb::xcb_generate_id(cx.inner.state.connection);
 
             let parent_id = (*cx.inner.state.screen).root;
@@ -160,41 +169,54 @@ impl WindowInner {
             let gc_id = xcb::xcb_generate_id(cx.inner.state.connection);
             xcb::xcb_create_gc(cx.inner.state.connection, gc_id, window_id, 0, ptr::null());
 
-            let shm_state = Self::init_shm(
-                cx,
+            let shm_state = WindowState::init_shm(
+                &cx.inner.state,
                 options.rect.width as usize,
                 options.rect.height as usize,
             );
 
             xcb::xcb_flush(cx.inner.state.connection);
 
-            Rc::new(WindowState {
+            let mut handler = handler;
+            let handler_wrapper =
+                move |data_any: &mut dyn Any, app_state: &Rc<AppState>, event: Event<'_>| {
+                    let data = data_any.downcast_mut::<T>().unwrap();
+                    let cx = AppContext::from_inner(AppContextInner::new(app_state));
+                    handler(data, &cx, event)
+                };
+
+            let state = Rc::new(WindowState {
                 window_id,
                 gc_id,
                 shm_state: RefCell::new(shm_state),
                 expose_rects: RefCell::new(Vec::new()),
-                app_state: cx.inner.state.clone(),
-                handler: RefCell::new(handler),
+                handler: RefCell::new(Box::new(handler_wrapper)),
+            });
+
+            cx.inner.state.windows.borrow_mut().insert(window_id, state);
+
+            Ok(WindowInner {
+                app_state: Rc::downgrade(&cx.inner.state),
+                window_id,
             })
-        };
-
-        let windows = &cx.inner.state.windows.0;
-        windows.borrow_mut().insert(state.window_id, state.clone());
-
-        Ok(WindowInner { state })
+        }
     }
 
     pub fn show(&self) {
+        let app_state = self.app_state();
+
         unsafe {
-            xcb::xcb_map_window(self.state.app_state.connection, self.state.window_id);
-            xcb::xcb_flush(self.state.app_state.connection);
+            xcb::xcb_map_window(app_state.connection, self.window_id);
+            xcb::xcb_flush(app_state.connection);
         }
     }
 
     pub fn hide(&self) {
+        let app_state = self.app_state();
+
         unsafe {
-            xcb::xcb_unmap_window(self.state.app_state.connection, self.state.window_id);
-            xcb::xcb_flush(self.state.app_state.connection);
+            xcb::xcb_unmap_window(app_state.connection, self.window_id);
+            xcb::xcb_flush(app_state.connection);
         }
     }
 
@@ -207,6 +229,9 @@ impl WindowInner {
     }
 
     fn present_inner(&self, bitmap: Bitmap, rects: Option<&[Rect]>) {
+        let app_state = self.app_state();
+        let window_state = Rc::clone(&app_state.windows.borrow()[&self.window_id]);
+
         unsafe {
             if let Some(rects) = rects {
                 let mut xcb_rects = Vec::with_capacity(rects.len());
@@ -220,9 +245,9 @@ impl WindowInner {
                 }
 
                 xcb::xcb_set_clip_rectangles(
-                    self.state.app_state.connection,
+                    app_state.connection,
                     xcb::XCB_CLIP_ORDERING_UNSORTED as u8,
-                    self.state.gc_id,
+                    window_state.gc_id,
                     0,
                     0,
                     xcb_rects.len() as u32,
@@ -230,7 +255,7 @@ impl WindowInner {
                 );
             }
 
-            if let Some(ref shm_state) = *self.state.shm_state.borrow() {
+            if let Some(ref shm_state) = *window_state.shm_state.borrow() {
                 // This is safe because shm_ptr is page-aligned and thus u32-aligned
                 let data = slice::from_raw_parts_mut(
                     shm_state.shm_ptr as *mut u32,
@@ -247,9 +272,9 @@ impl WindowInner {
                 }
 
                 let cookie = xcb::xcb_shm_put_image(
-                    self.state.app_state.connection,
-                    self.state.window_id,
-                    self.state.gc_id,
+                    app_state.connection,
+                    window_state.window_id,
+                    window_state.gc_id,
                     shm_state.width as u16,
                     shm_state.height as u16,
                     0,
@@ -265,13 +290,13 @@ impl WindowInner {
                     0,
                 );
 
-                xcb::xcb_request_check(self.state.app_state.connection, cookie);
+                xcb::xcb_request_check(app_state.connection, cookie);
             } else {
                 xcb::xcb_put_image(
-                    self.state.app_state.connection,
+                    app_state.connection,
                     xcb::XCB_IMAGE_FORMAT_Z_PIXMAP as u8,
-                    self.state.window_id,
-                    self.state.gc_id,
+                    window_state.window_id,
+                    window_state.gc_id,
                     bitmap.width() as u16,
                     bitmap.height() as u16,
                     0,
@@ -285,9 +310,9 @@ impl WindowInner {
 
             if rects.is_some() {
                 xcb::xcb_set_clip_rectangles(
-                    self.state.app_state.connection,
+                    app_state.connection,
                     xcb::XCB_CLIP_ORDERING_UNSORTED as u8,
-                    self.state.gc_id,
+                    window_state.gc_id,
                     0,
                     0,
                     0,
@@ -295,27 +320,29 @@ impl WindowInner {
                 );
             }
 
-            xcb::xcb_flush(self.state.app_state.connection);
+            xcb::xcb_flush(app_state.connection);
         }
     }
 
     pub fn set_cursor(&self, cursor: Cursor) {
+        let app_state = self.app_state();
+
         unsafe {
-            let cursor_cache = &self.state.app_state.cursor_cache;
+            let cursor_cache = &app_state.cursor_cache;
             let cursor_id = *cursor_cache.borrow_mut().entry(cursor).or_insert_with(|| {
                 if cursor == Cursor::None {
-                    let cursor_id = xcb::xcb_generate_id(self.state.app_state.connection);
-                    let pixmap_id = xcb::xcb_generate_id(self.state.app_state.connection);
+                    let cursor_id = xcb::xcb_generate_id(app_state.connection);
+                    let pixmap_id = xcb::xcb_generate_id(app_state.connection);
                     xcb::xcb_create_pixmap(
-                        self.state.app_state.connection,
+                        app_state.connection,
                         1,
                         pixmap_id,
-                        (*self.state.app_state.screen).root,
+                        (*app_state.screen).root,
                         1,
                         1,
                     );
                     xcb::xcb_create_cursor(
-                        self.state.app_state.connection,
+                        app_state.connection,
                         cursor_id,
                         pixmap_id,
                         pixmap_id,
@@ -328,7 +355,7 @@ impl WindowInner {
                         0,
                         0,
                     );
-                    xcb::xcb_free_pixmap(self.state.app_state.connection, pixmap_id);
+                    xcb::xcb_free_pixmap(app_state.connection, pixmap_id);
                     cursor_id
                 } else {
                     let cursor_name = match cursor {
@@ -345,29 +372,31 @@ impl WindowInner {
                         Cursor::None => &b"\0"[..],
                     };
                     xcb::xcb_cursor_load_cursor(
-                        self.state.app_state.cursor_context,
+                        app_state.cursor_context,
                         cursor_name.as_ptr() as *const c_char,
                     )
                 }
             });
 
             xcb::xcb_change_window_attributes(
-                self.state.app_state.connection,
-                self.state.window_id,
+                app_state.connection,
+                self.window_id,
                 xcb::XCB_CW_CURSOR,
                 &cursor_id as *const xcb::xcb_cursor_t as *const c_void,
             );
 
-            xcb::xcb_flush(self.state.app_state.connection);
+            xcb::xcb_flush(app_state.connection);
         }
     }
 
     pub fn set_mouse_position(&self, position: Point) {
+        let app_state = self.app_state();
+
         unsafe {
             xcb::xcb_warp_pointer(
-                self.state.app_state.connection,
+                app_state.connection,
                 xcb::XCB_NONE,
-                self.state.window_id,
+                self.window_id,
                 0,
                 0,
                 0,
@@ -375,14 +404,16 @@ impl WindowInner {
                 position.x as i16,
                 position.y as i16,
             );
-            xcb::xcb_flush(self.state.app_state.connection);
+            xcb::xcb_flush(app_state.connection);
         }
     }
 
     pub fn raw_window_handle(&self) -> RawWindowHandle {
+        let app_state = self.app_state();
+
         RawWindowHandle::Xcb(XcbHandle {
-            window: self.state.window_id,
-            connection: self.state.app_state.connection as *mut c_void,
+            window: self.window_id,
+            connection: app_state.connection as *mut c_void,
             ..XcbHandle::empty()
         })
     }
@@ -390,14 +421,12 @@ impl WindowInner {
 
 impl Drop for WindowInner {
     fn drop(&mut self) {
-        let windows = &self.state.app_state.windows;
-        windows.remove_window(self.state.window_id);
-
-        unsafe {
-            self.deinit_shm();
-
-            xcb::xcb_destroy_window(self.state.app_state.connection, self.state.window_id);
-            xcb::xcb_flush(self.state.app_state.connection);
+        if let Some(app_state) = self.app_state.upgrade() {
+            if let Some(window_state) = app_state.windows.borrow_mut().remove(&self.window_id) {
+                unsafe {
+                    window_state.destroy(&app_state);
+                }
+            }
         }
     }
 }

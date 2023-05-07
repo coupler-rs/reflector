@@ -93,7 +93,7 @@ pub struct App<T> {
     phantom: PhantomData<*mut ()>,
 }
 
-impl<T> App<T> {
+impl<T: 'static> App<T> {
     fn from_inner(inner: backend::AppInner<T>) -> App<T> {
         App {
             inner,
