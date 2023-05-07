@@ -1,17 +1,4 @@
-#[cfg(target_os = "windows")]
-mod windows;
-#[cfg(target_os = "windows")]
-use windows as platform;
-
-#[cfg(target_os = "macos")]
-mod macos;
-#[cfg(target_os = "macos")]
-use macos as platform;
-
-#[cfg(target_os = "linux")]
-mod x11;
-#[cfg(target_os = "linux")]
-use x11 as platform;
+mod backend;
 
 use std::marker::PhantomData;
 use std::time::Duration;
@@ -23,7 +10,7 @@ pub type Result<T> = result::Result<T, Error>;
 
 #[derive(Debug)]
 pub enum Error {
-    Os(platform::OsError),
+    Os(backend::OsError),
     InsideEventHandler,
     InvalidWindowHandle,
 }
@@ -83,7 +70,7 @@ impl<T> fmt::Display for IntoInnerError<T> {
 }
 
 pub struct TimerHandle {
-    inner: platform::TimerHandleInner,
+    inner: backend::TimerHandleInner,
     // ensure !Send and !Sync on all platforms
     phantom: PhantomData<*mut ()>,
 }
@@ -101,13 +88,13 @@ impl fmt::Debug for TimerHandle {
 }
 
 pub struct App<T> {
-    inner: platform::AppInner<T>,
+    inner: backend::AppInner<T>,
     // ensure !Send and !Sync on all platforms
     phantom: PhantomData<*mut ()>,
 }
 
 impl<T> App<T> {
-    fn from_inner(inner: platform::AppInner<T>) -> App<T> {
+    fn from_inner(inner: backend::AppInner<T>) -> App<T> {
         App {
             inner,
             phantom: PhantomData,
@@ -119,7 +106,7 @@ impl<T> App<T> {
         F: FnOnce(&AppContext<T>) -> Result<T>,
         T: 'static,
     {
-        Ok(App::from_inner(platform::AppInner::new(build)?))
+        Ok(App::from_inner(backend::AppInner::new(build)?))
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -152,13 +139,13 @@ impl<T> AsRawFd for App<T> {
 }
 
 pub struct AppContext<'a, T> {
-    inner: platform::AppContextInner<'a, T>,
+    inner: backend::AppContextInner<'a, T>,
     // ensure !Send and !Sync on all platforms
     phantom: PhantomData<*mut ()>,
 }
 
 impl<'a, T> AppContext<'a, T> {
-    fn from_inner(inner: platform::AppContextInner<T>) -> AppContext<T> {
+    fn from_inner(inner: backend::AppContextInner<T>) -> AppContext<T> {
         AppContext {
             inner,
             phantom: PhantomData,
@@ -378,20 +365,20 @@ impl<'a> WindowOptions<'a> {
         H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
         T: 'static,
     {
-        Ok(Window::from_inner(platform::WindowInner::open(
+        Ok(Window::from_inner(backend::WindowInner::open(
             self, cx, handler,
         )?))
     }
 }
 
 pub struct Window {
-    inner: platform::WindowInner,
+    inner: backend::WindowInner,
     // ensure !Send and !Sync on all platforms
     phantom: PhantomData<*mut ()>,
 }
 
 impl Window {
-    fn from_inner(inner: platform::WindowInner) -> Window {
+    fn from_inner(inner: backend::WindowInner) -> Window {
         Window {
             inner,
             phantom: PhantomData,
