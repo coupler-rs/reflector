@@ -396,7 +396,7 @@ pub struct WindowInner {
 }
 
 impl WindowInner {
-    fn init_shm<T>(cx: &AppContext<T>, width: usize, height: usize) -> Option<ShmState> {
+    unsafe fn init_shm<T>(cx: &AppContext<T>, width: usize, height: usize) -> Option<ShmState> {
         if !cx.inner.state.shm_supported {
             return None;
         }
@@ -442,7 +442,7 @@ impl WindowInner {
         }
     }
 
-    fn deinit_shm(&self) {
+    unsafe fn deinit_shm(&self) {
         if let Some(shm_state) = self.state.shm_state.take() {
             unsafe {
                 xcb::xcb_shm_detach(self.state.app_state.connection, shm_state.shm_seg_id);
@@ -753,9 +753,9 @@ impl Drop for WindowInner {
         let windows = &self.state.app_state.windows;
         windows.remove_window(self.state.window_id);
 
-        self.deinit_shm();
-
         unsafe {
+            self.deinit_shm();
+
             xcb::xcb_destroy_window(self.state.app_state.connection, self.state.window_id);
             xcb::xcb_flush(self.state.app_state.connection);
         }
