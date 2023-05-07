@@ -1,6 +1,6 @@
 use crate::{
-    App, AppContext, Bitmap, CloseError, Cursor, Error, Event, MouseButton, Point, Rect, Response,
-    Result, Window, WindowOptions,
+    App, AppContext, Bitmap, Cursor, Error, Event, IntoInnerError, MouseButton, Point, Rect,
+    Response, Result, Window, WindowOptions,
 };
 
 use std::any::Any;
@@ -345,7 +345,7 @@ impl<T> AppInner<T> {
         }
     }
 
-    pub fn into_inner(self) -> result::Result<T, CloseError<App<T>>> {
+    pub fn into_inner(self) -> result::Result<T, IntoInnerError<App<T>>> {
         Ok(*self.data)
     }
 }
@@ -746,47 +746,18 @@ impl WindowInner {
             ..XcbHandle::empty()
         })
     }
-
-    pub fn close(self) -> result::Result<(), CloseError<Window>> {
-        if let Err(error) = self.destroy() {
-            return Err(CloseError::new(error, Window::from_inner(self)));
-        }
-
-        // Need to prevent WindowInner::drop from being run (since we already
-        // called destroy), but the state field still needs to get dropped.
-        let window = MaybeUninit::new(self);
-        let state = unsafe { ptr::read(ptr::addr_of!((*window.as_ptr()).state)) };
-        drop(state);
-
-        Ok(())
-    }
-
-    fn destroy(&self) -> Result<()> {
-        unsafe {
-            self.deinit_shm();
-
-            let cookie = xcb::xcb_destroy_window_checked(
-                self.state.app_state.connection,
-                self.state.window_id,
-            );
-            let error = xcb::xcb_request_check(self.state.app_state.connection, cookie);
-
-            if !error.is_null() {
-                let error_code = (*error).error_code;
-                libc::free(error as *mut c_void);
-                return Err(Error::Os(OsError::Xcb(error_code as c_int)));
-            }
-        }
-
-        let windows = &self.state.app_state.windows;
-        windows.remove_window(self.state.window_id);
-
-        Ok(())
-    }
 }
 
 impl Drop for WindowInner {
     fn drop(&mut self) {
-        let _ = self.destroy();
+        let windows = &self.state.app_state.windows;
+        windows.remove_window(self.state.window_id);
+
+        self.deinit_shm();
+
+        unsafe {
+            xcb::xcb_destroy_window(self.state.app_state.connection, self.state.window_id);
+            xcb::xcb_flush(self.state.app_state.connection);
+        }
     }
 }

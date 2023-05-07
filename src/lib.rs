@@ -43,14 +43,14 @@ impl fmt::Display for Error {
 }
 
 #[derive(Debug)]
-pub struct CloseError<T> {
+pub struct IntoInnerError<T> {
     error: Error,
     inner: T,
 }
 
-impl<T> CloseError<T> {
-    fn new(error: Error, inner: T) -> CloseError<T> {
-        CloseError { error, inner }
+impl<T> IntoInnerError<T> {
+    fn new(error: Error, inner: T) -> IntoInnerError<T> {
+        IntoInnerError { error, inner }
     }
 
     #[inline]
@@ -74,9 +74,9 @@ impl<T> CloseError<T> {
     }
 }
 
-impl<T: Send + fmt::Debug> error::Error for CloseError<T> {}
+impl<T: Send + fmt::Debug> error::Error for IntoInnerError<T> {}
 
-impl<T> fmt::Display for CloseError<T> {
+impl<T> fmt::Display for IntoInnerError<T> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         self.error.fmt(fmt)
     }
@@ -130,7 +130,7 @@ impl<T> App<T> {
         self.inner.poll()
     }
 
-    pub fn into_inner(self) -> result::Result<T, CloseError<App<T>>> {
+    pub fn into_inner(self) -> result::Result<T, IntoInnerError<App<T>>> {
         self.inner.into_inner()
     }
 }
@@ -420,10 +420,6 @@ impl Window {
 
     pub fn set_mouse_position(&self, position: Point) {
         self.inner.set_mouse_position(position);
-    }
-
-    pub fn close(self) -> result::Result<(), CloseError<Window>> {
-        self.inner.close()
     }
 }
 

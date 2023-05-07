@@ -1,6 +1,6 @@
 use crate::{
-    App, AppContext, Bitmap, CloseError, Cursor, Error, Event, MouseButton, Parent, Point, Rect,
-    Response, Result, Window, WindowOptions,
+    App, AppContext, Bitmap, Cursor, Error, Event, IntoInnerError, MouseButton, Parent, Point,
+    Rect, Response, Result, Window, WindowOptions,
 };
 
 use std::alloc::{alloc, dealloc, Layout};
@@ -165,11 +165,11 @@ impl<T> AppInner<T> {
         None
     }
 
-    pub fn into_inner(self) -> result::Result<T, CloseError<App<T>>> {
+    pub fn into_inner(self) -> result::Result<T, IntoInnerError<App<T>>> {
         if let Some(data) = self.take_data() {
             Ok(data)
         } else {
-            Err(CloseError::new(
+            Err(IntoInnerError::new(
                 Error::InsideEventHandler,
                 App::from_inner(self),
             ))
@@ -491,35 +491,13 @@ impl WindowInner {
             ..WindowsHandle::empty()
         })
     }
-
-    unsafe fn destroy(hwnd: windef::HWND) -> Result<()> {
-        if winuser::DestroyWindow(hwnd) == 0 {
-            return Err(Error::Os(OsError {
-                code: errhandlingapi::GetLastError(),
-            }));
-        }
-
-        Ok(())
-    }
-
-    pub fn close(self) -> result::Result<(), CloseError<Window>> {
-        if let Err(error) = unsafe { Self::destroy(self.state.hwnd) } {
-            return Err(CloseError::new(error, Window::from_inner(self)));
-        }
-
-        // Need to prevent WindowInner::drop from being run (since we already
-        // called destroy), but the state field still needs to get dropped.
-        let window = MaybeUninit::new(self);
-        let state = unsafe { ptr::read(ptr::addr_of!((*window.as_ptr()).state)) };
-        drop(state);
-
-        Ok(())
-    }
 }
 
 impl Drop for WindowInner {
     fn drop(&mut self) {
-        let _ = unsafe { Self::destroy(self.state.hwnd) };
+        unsafe {
+            winuser::DestroyWindow(hwnd);
+        }
     }
 }
 

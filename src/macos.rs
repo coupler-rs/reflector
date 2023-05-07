@@ -1,5 +1,5 @@
 use crate::{
-    App, AppContext, Bitmap, CloseError, Cursor, Event, Point, Rect, Response, Result, Window,
+    App, AppContext, Bitmap, Cursor, Event, IntoInnerError, Point, Rect, Response, Result, Window,
     WindowOptions,
 };
 
@@ -49,7 +49,7 @@ impl<T> AppInner<T> {
         Ok(())
     }
 
-    pub fn into_inner(self) -> result::Result<T, CloseError<App<T>>> {
+    pub fn into_inner(self) -> result::Result<T, IntoInnerError<App<T>>> {
         unimplemented!()
     }
 }
@@ -98,10 +98,6 @@ impl WindowInner {
     pub fn set_mouse_position(&self, position: Point) {}
 
     pub fn raw_window_handle(&self) -> RawWindowHandle {
-        unimplemented!()
-    }
-
-    pub fn close(self) -> result::Result<(), CloseError<Window>> {
         unimplemented!()
     }
 }
