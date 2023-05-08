@@ -144,7 +144,7 @@ pub struct AppContext<'a, T> {
     phantom: PhantomData<*mut ()>,
 }
 
-impl<'a, T> AppContext<'a, T> {
+impl<'a, T: 'static> AppContext<'a, T> {
     fn from_inner(inner: backend::AppContextInner<T>) -> AppContext<T> {
         AppContext {
             inner,

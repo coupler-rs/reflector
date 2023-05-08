@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use portlight::{App, AppContext, Bitmap, Event, Response, Size, Window, WindowOptions};
 
 struct State {
@@ -51,6 +53,10 @@ fn main() {
             .unwrap();
 
         window.show();
+
+        cx.set_timer(Duration::from_millis(1000), |_, _| {
+            println!("timer");
+        });
 
         Ok(State { window: window })
     })

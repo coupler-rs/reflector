@@ -1,10 +1,12 @@
 mod app;
+mod timer;
 mod window;
 
 use std::fmt;
 use std::os::raw::c_int;
 
 pub use app::{AppContextInner, AppInner};
+pub use timer::TimerHandleInner;
 pub use window::WindowInner;
 
 #[derive(Debug)]
@@ -20,10 +22,4 @@ impl fmt::Display for OsError {
             OsError::Message(message) => write!(fmt, "{}", message),
         }
     }
-}
-
-pub struct TimerHandleInner {}
-
-impl TimerHandleInner {
-    pub fn cancel(self) {}
 }

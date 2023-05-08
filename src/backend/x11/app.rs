@@ -5,13 +5,14 @@ use std::marker::PhantomData;
 use std::os::raw::{c_char, c_int};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{ptr, result};
 
 use xcb_sys as xcb;
 
+use super::timer::{TimerHandleInner, TimerState};
 use super::window::WindowState;
-use super::{OsError, TimerHandleInner};
+use super::OsError;
 use crate::{
     App, AppContext, Cursor, Error, Event, IntoInnerError, MouseButton, Point, Rect, Result,
 };
@@ -110,6 +111,7 @@ pub struct AppState {
     pub cursor_cache: RefCell<HashMap<Cursor, xcb::xcb_cursor_t>>,
     pub running: Cell<bool>,
     pub windows: RefCell<HashMap<xcb::xcb_window_t, Rc<WindowState>>>,
+    pub timer_state: TimerState,
 }
 
 impl Drop for AppState {
@@ -192,6 +194,7 @@ impl<T: 'static> AppInner<T> {
                 cursor_cache: RefCell::new(HashMap::new()),
                 running: Cell::new(false),
                 windows: RefCell::new(HashMap::new()),
+                timer_state: TimerState::new(),
             })
         };
 
@@ -209,17 +212,32 @@ impl<T: 'static> AppInner<T> {
     pub fn run(&mut self) -> Result<()> {
         self.state.running.set(true);
 
+        let fd = self.as_raw_fd();
+
         while self.state.running.get() {
+            self.drain_events();
+            self.state.timer_state.poll(&mut *self.data, &self.state);
+            self.drain_events();
+
+            if !self.state.running.get() {
+                break;
+            }
+
+            let mut fds = [libc::pollfd {
+                fd,
+                events: libc::POLLIN,
+                revents: 0,
+            }];
+
+            let timeout = if let Some(next_time) = self.state.timer_state.next_time() {
+                let duration = next_time.saturating_duration_since(Instant::now());
+                duration.as_millis() as i32
+            } else {
+                -1
+            };
+
             unsafe {
-                let event = xcb::xcb_wait_for_event(self.state.connection);
-                if event.is_null() {
-                    let error = xcb::xcb_connection_has_error(self.state.connection);
-                    return Err(Error::Os(OsError::Xcb(error)));
-                }
-
-                self.handle_event(event);
-
-                libc::free(event as *mut c_void);
+                libc::poll(fds.as_mut_ptr(), fds.len() as u64, timeout);
             }
         }
 
@@ -227,6 +245,14 @@ impl<T: 'static> AppInner<T> {
     }
 
     pub fn poll(&mut self) -> Result<()> {
+        self.drain_events();
+        self.state.timer_state.poll(&mut *self.data, &self.state);
+        self.drain_events();
+
+        Ok(())
+    }
+
+    fn drain_events(&mut self) {
         loop {
             unsafe {
                 let event = xcb::xcb_poll_for_event(self.state.connection);
@@ -239,8 +265,6 @@ impl<T: 'static> AppInner<T> {
                 libc::free(event as *mut c_void);
             }
         }
-
-        Ok(())
     }
 
     unsafe fn handle_event(&mut self, event: *mut xcb::xcb_generic_event_t) {
@@ -343,7 +367,7 @@ pub struct AppContextInner<'a, T> {
     _marker: PhantomData<T>,
 }
 
-impl<'a, T> AppContextInner<'a, T> {
+impl<'a, T: 'static> AppContextInner<'a, T> {
     pub(super) fn new(state: &'a Rc<AppState>) -> AppContextInner<'a, T> {
         AppContextInner {
             state,
@@ -356,7 +380,9 @@ impl<'a, T> AppContextInner<'a, T> {
         H: 'static,
         H: FnMut(&mut T, &AppContext<T>),
     {
-        TimerHandleInner {}
+        self.state
+            .timer_state
+            .set_timer(self.state, duration, handler)
     }
 
     pub fn exit(&self) {
