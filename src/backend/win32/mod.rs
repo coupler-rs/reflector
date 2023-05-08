@@ -165,7 +165,10 @@ impl<T> AppInner<T> {
         None
     }
 
-    pub fn into_inner(self) -> result::Result<T, IntoInnerError<App<T>>> {
+    pub fn into_inner(self) -> result::Result<T, IntoInnerError<App<T>>>
+    where
+        T: 'static,
+    {
         if let Some(data) = self.take_data() {
             Ok(data)
         } else {
@@ -212,7 +215,7 @@ struct Handler<T, H> {
     handler: RefCell<H>,
 }
 
-impl<T, H> HandleEvent for Handler<T, H>
+impl<T: 'static, H> HandleEvent for Handler<T, H>
 where
     H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
 {
@@ -496,7 +499,7 @@ impl WindowInner {
 impl Drop for WindowInner {
     fn drop(&mut self) {
         unsafe {
-            winuser::DestroyWindow(hwnd);
+            winuser::DestroyWindow(self.state.hwnd);
         }
     }
 }
