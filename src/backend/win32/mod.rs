@@ -562,10 +562,14 @@ unsafe extern "system" fn wnd_proc(
                 }
                 wingdi::DeleteObject(rgn as *mut c_void);
 
-                state.handler.handle_event(Event::Expose(&rects));
+                // Only validate the dirty region if we successfully invoked the event handler.
+                // This ensures that if we receive an expose event during the App:new builder
+                // callback, we will receive it again later.
+                if state.handler.handle_event(Event::Expose(&rects)).is_some() {
+                    winuser::ValidateRgn(hwnd, ptr::null_mut());
+                }
 
-                // Fall through to DefWindowProcW so that update region is validated.
-                // Without this, WM_PAINT will get called repeatedly
+                return 0;
             }
             winuser::WM_MOUSEMOVE => {
                 let point = Point {
