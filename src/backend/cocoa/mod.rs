@@ -35,7 +35,7 @@ impl<T> AppInner<T> {
         T: 'static,
     {
         let cx = AppContext::from_inner(AppContextInner {
-            phantom: PhantomData,
+            _marker: PhantomData,
         });
 
         Ok(AppInner { state: build(&cx)? })
@@ -55,7 +55,7 @@ impl<T> AppInner<T> {
 }
 
 pub struct AppContextInner<'a, T> {
-    phantom: PhantomData<&'a T>,
+    _marker: PhantomData<&'a T>,
 }
 
 impl<'a, T> AppContextInner<'a, T> {

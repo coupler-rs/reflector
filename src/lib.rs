@@ -72,7 +72,7 @@ impl<T> fmt::Display for IntoInnerError<T> {
 pub struct TimerHandle {
     inner: backend::TimerHandleInner,
     // ensure !Send and !Sync on all platforms
-    phantom: PhantomData<*mut ()>,
+    _marker: PhantomData<*mut ()>,
 }
 
 impl TimerHandle {
@@ -90,14 +90,14 @@ impl fmt::Debug for TimerHandle {
 pub struct App<T> {
     inner: backend::AppInner<T>,
     // ensure !Send and !Sync on all platforms
-    phantom: PhantomData<*mut ()>,
+    _marker: PhantomData<*mut ()>,
 }
 
 impl<T: 'static> App<T> {
     fn from_inner(inner: backend::AppInner<T>) -> App<T> {
         App {
             inner,
-            phantom: PhantomData,
+            _marker: PhantomData,
         }
     }
 
@@ -141,14 +141,14 @@ impl<T> AsRawFd for App<T> {
 pub struct AppContext<'a, T> {
     inner: backend::AppContextInner<'a, T>,
     // ensure !Send and !Sync on all platforms
-    phantom: PhantomData<*mut ()>,
+    _marker: PhantomData<*mut ()>,
 }
 
 impl<'a, T: 'static> AppContext<'a, T> {
     fn from_inner(inner: backend::AppContextInner<T>) -> AppContext<T> {
         AppContext {
             inner,
-            phantom: PhantomData,
+            _marker: PhantomData,
         }
     }
 
@@ -159,7 +159,7 @@ impl<'a, T: 'static> AppContext<'a, T> {
     {
         TimerHandle {
             inner: self.inner.set_timer(duration, handler),
-            phantom: PhantomData,
+            _marker: PhantomData,
         }
     }
 
@@ -374,14 +374,14 @@ impl<'a> WindowOptions<'a> {
 pub struct Window {
     inner: backend::WindowInner,
     // ensure !Send and !Sync on all platforms
-    phantom: PhantomData<*mut ()>,
+    _marker: PhantomData<*mut ()>,
 }
 
 impl Window {
     fn from_inner(inner: backend::WindowInner) -> Window {
         Window {
             inner,
-            phantom: PhantomData,
+            _marker: PhantomData,
         }
     }
 
