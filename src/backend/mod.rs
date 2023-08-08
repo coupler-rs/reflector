@@ -6,7 +6,7 @@ pub use win32::*;
 #[cfg(target_os = "macos")]
 mod cocoa;
 #[cfg(target_os = "macos")]
-pub use cocoa::*;
+pub use self::cocoa::*;
 
 #[cfg(target_os = "linux")]
 mod x11;
