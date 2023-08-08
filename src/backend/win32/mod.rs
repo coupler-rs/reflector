@@ -1,11 +1,11 @@
-mod app;
-mod window;
-
 use std::ffi::OsStr;
 use std::fmt;
 use std::os::windows::ffi::OsStrExt;
 
 use winapi::{shared::minwindef, shared::ntdef, um::winnt};
+
+mod app;
+mod window;
 
 pub use app::{AppContextInner, AppInner};
 pub use window::WindowInner;

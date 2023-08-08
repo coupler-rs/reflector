@@ -1,10 +1,10 @@
-mod backend;
-
 use std::marker::PhantomData;
 use std::time::Duration;
 use std::{error, fmt, result};
 
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
+
+mod backend;
 
 pub type Result<T> = result::Result<T, Error>;
 

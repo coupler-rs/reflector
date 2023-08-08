@@ -1,9 +1,9 @@
+use std::fmt;
+use std::os::raw::c_int;
+
 mod app;
 mod timer;
 mod window;
-
-use std::fmt;
-use std::os::raw::c_int;
 
 pub use app::{AppContextInner, AppInner};
 pub use timer::TimerHandleInner;

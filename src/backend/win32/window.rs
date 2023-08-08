@@ -1,8 +1,3 @@
-use crate::{
-    AppContext, Bitmap, Cursor, Error, Event, MouseButton, Parent, Point, Rect, Response, Result,
-    WindowOptions,
-};
-
 use std::alloc::{alloc, dealloc, Layout};
 use std::cell::{Cell, RefCell};
 use std::ffi::{c_int, c_void};
@@ -18,6 +13,10 @@ use winapi::{
 
 use super::app::{AppContextInner, AppState};
 use super::{hinstance, to_wstring, OsError};
+use crate::{
+    AppContext, Bitmap, Cursor, Error, Event, MouseButton, Parent, Point, Rect, Response, Result,
+    WindowOptions,
+};
 
 pub trait HandleEvent {
     fn handle_event(&self, event: Event) -> Option<Response>;

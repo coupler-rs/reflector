@@ -1,13 +1,13 @@
-use crate::{
-    App, AppContext, Bitmap, Cursor, Event, IntoInnerError, Point, Rect, Response, Result, Window,
-    WindowOptions,
-};
-
 use std::marker::PhantomData;
 use std::time::Duration;
 use std::{fmt, result};
 
 use raw_window_handle::RawWindowHandle;
+
+use crate::{
+    App, AppContext, Bitmap, Cursor, Event, IntoInnerError, Point, Rect, Response, Result, Window,
+    WindowOptions,
+};
 
 #[derive(Debug)]
 pub struct OsError {}

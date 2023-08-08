@@ -1,5 +1,3 @@
-use crate::{App, AppContext, Error, IntoInnerError, Result};
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -9,6 +7,7 @@ use winapi::{shared::minwindef, shared::ntdef, um::errhandlingapi, um::winuser};
 
 use super::window::wnd_proc;
 use super::{hinstance, to_wstring, OsError, TimerHandleInner};
+use crate::{App, AppContext, Error, IntoInnerError, Result};
 
 pub struct AppState<T> {
     pub class: minwindef::ATOM,
