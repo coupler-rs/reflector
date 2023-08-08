@@ -380,9 +380,7 @@ impl<'a, T: 'static> AppContextInner<'a, T> {
         H: 'static,
         H: FnMut(&mut T, &AppContext<T>),
     {
-        self.state
-            .timer_state
-            .set_timer(self.state, duration, handler)
+        self.state.timer_state.set_timer(self.state, duration, handler)
     }
 
     pub fn exit(&self) {

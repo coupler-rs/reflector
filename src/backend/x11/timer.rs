@@ -137,10 +137,6 @@ impl TimerHandleInner {
             .upgrade()
             .expect("attempted to use TimerHandle after App has been dropped");
 
-        app_state
-            .timer_state
-            .timers
-            .borrow_mut()
-            .remove(&self.timer_id);
+        app_state.timer_state.timers.borrow_mut().remove(&self.timer_id);
     }
 }

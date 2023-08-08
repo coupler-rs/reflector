@@ -17,8 +17,7 @@ impl State {
         match event {
             Event::Expose(rects) => {
                 println!("expose: {:?}", rects);
-                self.window
-                    .present(Bitmap::new(&[0xFFFF00FF; 512 * 512], 512, 512));
+                self.window.present(Bitmap::new(&[0xFFFF00FF; 512 * 512], 512, 512));
             }
             Event::MouseMove(pos) => {
                 println!("mouse move: {:?}", pos);
