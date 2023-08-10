@@ -14,11 +14,8 @@ winapi = { version = "0.3.8", features = ["std", "winuser", "windef", "minwindef
 uuid = { version = "0.8", features = ["v4"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-cocoa = "0.24.0"
-core-foundation = "0.9.1"
-core-graphics = "0.22.2"
 objc = { version = "0.2.7", features = ["exception"] }
-uuid = { version = "0.8", features = ["v4"] }
+cocoa = "0.24.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 xcb-sys = { version = "0.2.1", features = ["icccm", "shm", "cursor"] }

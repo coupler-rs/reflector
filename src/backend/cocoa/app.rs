@@ -2,6 +2,11 @@ use std::marker::PhantomData;
 use std::result;
 use std::time::Duration;
 
+use objc::rc::autoreleasepool;
+
+use cocoa::appkit::{NSApp, NSApplication, NSApplicationActivationPolicyRegular};
+use cocoa::base::nil;
+
 use super::TimerHandleInner;
 use crate::{App, AppContext, IntoInnerError, Result};
 
@@ -23,6 +28,12 @@ impl<T> AppInner<T> {
     }
 
     pub fn run(&mut self) -> Result<()> {
+        autoreleasepool(|| unsafe {
+            let app = NSApp();
+            app.setActivationPolicy_(NSApplicationActivationPolicyRegular);
+            app.run();
+        });
+
         Ok(())
     }
 
@@ -48,5 +59,9 @@ impl<'a, T> AppContextInner<'a, T> {
         TimerHandleInner {}
     }
 
-    pub fn exit(&self) {}
+    pub fn exit(&self) {
+        unsafe {
+            NSApp().stop_(nil);
+        }
+    }
 }
