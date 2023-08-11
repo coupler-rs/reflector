@@ -1,4 +1,8 @@
-use objc::runtime::objc_release;
+use std::ffi::c_void;
+
+use objc::declare::ClassDecl;
+use objc::runtime::{objc_disposeClassPair, objc_release, Class};
+use objc::{class, msg_send, sel, sel_impl};
 
 use cocoa::appkit::{NSBackingStoreBuffered, NSView, NSWindow, NSWindowStyleMask};
 use cocoa::base::{id, nil, NO};
@@ -6,7 +10,41 @@ use cocoa::foundation::{NSPoint, NSRect, NSSize};
 
 use raw_window_handle::RawWindowHandle;
 
-use crate::{AppContext, Bitmap, Cursor, Event, Point, Rect, Response, Result, WindowOptions};
+use super::OsError;
+use crate::{
+    AppContext, Bitmap, Cursor, Error, Event, Point, Rect, Response, Result, WindowOptions,
+};
+
+const WINDOW_STATE: &str = "windowState";
+
+fn class_name() -> String {
+    use std::fmt::Write;
+
+    let mut bytes = [0u8; 16];
+    getrandom::getrandom(&mut bytes).unwrap();
+
+    let mut name = "window-".to_string();
+    for byte in bytes {
+        write!(&mut name, "{:x}", byte).unwrap();
+    }
+
+    name
+}
+
+pub fn register_class() -> Result<*mut Class> {
+    let name = class_name();
+    let Some(mut decl) = ClassDecl::new(&name, class!(NSView)) else {
+        return Err(Error::Os(OsError::Other("could not declare NSView subclass")));
+    };
+
+    decl.add_ivar::<*mut c_void>(WINDOW_STATE);
+
+    Ok(decl.register() as *const Class as *mut Class)
+}
+
+pub unsafe fn unregister_class(class: *mut Class) {
+    objc_disposeClassPair(class);
+}
 
 pub struct WindowInner {
     window: id,
@@ -16,7 +54,7 @@ pub struct WindowInner {
 impl WindowInner {
     pub fn open<T, H>(
         options: &WindowOptions,
-        _cx: &AppContext<T>,
+        cx: &AppContext<T>,
         _handler: H,
     ) -> Result<WindowInner>
     where
@@ -41,7 +79,8 @@ impl WindowInner {
                 NO,
             );
 
-            let view = NSView::alloc(nil).initWithFrame_(rect);
+            let view: id = msg_send![cx.inner.state.class, alloc];
+            let view = view.initWithFrame_(rect);
 
             window.setContentView_(view);
             window.center();

@@ -7,11 +7,15 @@ pub use app::{AppContextInner, AppInner};
 pub use window::WindowInner;
 
 #[derive(Debug)]
-pub struct OsError {}
+pub enum OsError {
+    Other(&'static str),
+}
 
 impl fmt::Display for OsError {
-    fn fmt(&self, _fmt: &mut fmt::Formatter) -> fmt::Result {
-        Ok(())
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            OsError::Other(err) => write!(fmt, "{}", err),
+        }
     }
 }
 
