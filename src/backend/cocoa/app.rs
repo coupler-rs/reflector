@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -6,7 +7,6 @@ use std::time::Duration;
 
 use objc::rc::autoreleasepool;
 use objc::runtime::Class;
-use objc::{class, msg_send};
 
 use cocoa::appkit::{NSApp, NSApplication, NSApplicationActivationPolicyRegular};
 use cocoa::base::nil;
@@ -15,12 +15,12 @@ use super::window::{register_class, unregister_class};
 use super::TimerHandleInner;
 use crate::{App, AppContext, IntoInnerError, Result};
 
-pub struct AppState<T> {
+pub struct AppState {
     pub class: *mut Class,
-    pub data: RefCell<Option<T>>,
+    pub data: RefCell<Option<Box<dyn Any>>>,
 }
 
-impl<T> Drop for AppState<T> {
+impl Drop for AppState {
     fn drop(&mut self) {
         unsafe {
             unregister_class(self.class);
@@ -29,7 +29,8 @@ impl<T> Drop for AppState<T> {
 }
 
 pub struct AppInner<T> {
-    pub state: Rc<AppState<T>>,
+    pub state: Rc<AppState>,
+    _marker: PhantomData<T>,
 }
 
 impl<T> AppInner<T> {
@@ -46,12 +47,18 @@ impl<T> AppInner<T> {
                 data: RefCell::new(None),
             });
 
-            let cx = AppContext::from_inner(AppContextInner { state: &state });
+            let cx = AppContext::from_inner(AppContextInner {
+                state: &state,
+                _marker: PhantomData,
+            });
             let data = build(&cx)?;
 
-            state.data.replace(Some(data));
+            state.data.replace(Some(Box::new(data)));
 
-            Ok(AppInner { state })
+            Ok(AppInner {
+                state,
+                _marker: PhantomData,
+            })
         })
     }
 
@@ -75,7 +82,8 @@ impl<T> AppInner<T> {
 }
 
 pub struct AppContextInner<'a, T> {
-    pub state: &'a Rc<AppState<T>>,
+    pub state: &'a Rc<AppState>,
+    _marker: PhantomData<T>,
 }
 
 impl<'a, T> AppContextInner<'a, T> {
