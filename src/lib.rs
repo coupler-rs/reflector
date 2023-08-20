@@ -36,6 +36,7 @@ pub struct IntoInnerError<T> {
 }
 
 impl<T> IntoInnerError<T> {
+    #[cfg_attr(target_os = "linux", allow(unused))]
     fn new(error: Error, inner: T) -> IntoInnerError<T> {
         IntoInnerError { error, inner }
     }
