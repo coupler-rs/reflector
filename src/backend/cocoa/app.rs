@@ -13,7 +13,7 @@ use cocoa::base::nil;
 
 use super::window::{register_class, unregister_class};
 use super::TimerHandleInner;
-use crate::{App, AppContext, IntoInnerError, Result};
+use crate::{App, AppContext, Error, IntoInnerError, Result};
 
 pub struct AppState {
     pub class: *mut Class,
@@ -33,7 +33,7 @@ pub struct AppInner<T> {
     _marker: PhantomData<T>,
 }
 
-impl<T> AppInner<T> {
+impl<T: 'static> AppInner<T> {
     pub fn new<F>(build: F) -> Result<AppInner<T>>
     where
         F: FnOnce(&AppContext<T>) -> Result<T>,
@@ -77,7 +77,16 @@ impl<T> AppInner<T> {
     }
 
     pub fn into_inner(self) -> result::Result<T, IntoInnerError<App<T>>> {
-        unimplemented!()
+        if let Ok(mut data) = self.state.data.try_borrow_mut() {
+            if let Some(data) = data.take() {
+                return Ok(*data.downcast().unwrap());
+            }
+        }
+
+        Err(IntoInnerError::new(
+            Error::InsideEventHandler,
+            App::from_inner(self),
+        ))
     }
 }
 
