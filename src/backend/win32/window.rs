@@ -20,7 +20,6 @@ use crate::{
 };
 
 struct WindowState {
-    hwnd: windef::HWND,
     mouse_down_count: Cell<isize>,
     cursor: Cell<Cursor>,
     app_state: Rc<AppState>,
@@ -62,6 +61,7 @@ impl WindowState {
 }
 
 pub struct WindowInner {
+    hwnd: windef::HWND,
     state: Rc<WindowState>,
 }
 
@@ -76,7 +76,7 @@ impl WindowInner {
         H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
         H: 'static,
     {
-        let state = unsafe {
+        unsafe {
             let window_name = to_wstring(&options.title);
 
             let mut style = winuser::WS_CLIPCHILDREN | winuser::WS_CLIPSIBLINGS;
@@ -142,7 +142,6 @@ impl WindowInner {
                 };
 
             let state = Rc::new(WindowState {
-                hwnd,
                 mouse_down_count: Cell::new(0),
                 cursor: Cell::new(Cursor::Arrow),
                 app_state: Rc::clone(cx.inner.state),
@@ -152,21 +151,19 @@ impl WindowInner {
             let state_ptr = Rc::into_raw(Rc::clone(&state));
             winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, state_ptr as isize);
 
-            state
-        };
-
-        Ok(WindowInner { state })
+            Ok(WindowInner { hwnd, state })
+        }
     }
 
     pub fn show(&self) {
         unsafe {
-            winuser::ShowWindow(self.state.hwnd, winuser::SW_SHOWNORMAL);
+            winuser::ShowWindow(self.hwnd, winuser::SW_SHOWNORMAL);
         }
     }
 
     pub fn hide(&self) {
         unsafe {
-            winuser::ShowWindow(self.state.hwnd, winuser::SW_HIDE);
+            winuser::ShowWindow(self.hwnd, winuser::SW_HIDE);
         }
     }
 
@@ -180,7 +177,7 @@ impl WindowInner {
 
     fn present_inner(&self, bitmap: Bitmap, rects: Option<&[Rect]>) {
         unsafe {
-            let hdc = winuser::GetDC(self.state.hwnd);
+            let hdc = winuser::GetDC(self.hwnd);
             if !hdc.is_null() {
                 if let Some(rects) = rects {
                     let (layout, _) = Layout::new::<wingdi::RGNDATAHEADER>()
@@ -267,7 +264,7 @@ impl WindowInner {
                     wingdi::SelectClipRgn(hdc, ptr::null_mut());
                 }
 
-                winuser::ReleaseDC(self.state.hwnd, hdc);
+                winuser::ReleaseDC(self.hwnd, hdc);
             }
         }
     }
@@ -283,14 +280,14 @@ impl WindowInner {
                 x: position.x as c_int,
                 y: position.y as c_int,
             };
-            winuser::ClientToScreen(self.state.hwnd, &mut point);
+            winuser::ClientToScreen(self.hwnd, &mut point);
             winuser::SetCursorPos(point.x, point.y);
         }
     }
 
     pub fn raw_window_handle(&self) -> RawWindowHandle {
         RawWindowHandle::Windows(WindowsHandle {
-            hwnd: self.state.hwnd as *mut c_void,
+            hwnd: self.hwnd as *mut c_void,
             ..WindowsHandle::empty()
         })
     }
@@ -299,7 +296,7 @@ impl WindowInner {
 impl Drop for WindowInner {
     fn drop(&mut self) {
         unsafe {
-            winuser::DestroyWindow(self.state.hwnd);
+            winuser::DestroyWindow(self.hwnd);
         }
     }
 }
