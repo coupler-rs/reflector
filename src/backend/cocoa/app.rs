@@ -105,6 +105,13 @@ pub struct AppContextInner<'a, T> {
 }
 
 impl<'a, T> AppContextInner<'a, T> {
+    pub(super) fn new(state: &'a Rc<AppState>) -> AppContextInner<'a, T> {
+        AppContextInner {
+            state,
+            _marker: PhantomData,
+        }
+    }
+
     pub fn set_timer<H>(&self, _duration: Duration, _handler: H) -> TimerHandleInner
     where
         H: 'static,

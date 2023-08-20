@@ -1,3 +1,5 @@
+use std::any::Any;
+use std::cell::RefCell;
 use std::ffi::c_void;
 use std::rc::Rc;
 
@@ -6,12 +8,12 @@ use objc::runtime::{objc_autorelease, objc_disposeClassPair, objc_release, Class
 use objc::{class, msg_send, sel, sel_impl};
 
 use cocoa::appkit::{NSBackingStoreBuffered, NSView, NSWindow, NSWindowStyleMask};
-use cocoa::base::{id, nil, NO};
+use cocoa::base::{id, nil, BOOL, NO};
 use cocoa::foundation::{NSPoint, NSRect, NSSize, NSString};
 
 use raw_window_handle::RawWindowHandle;
 
-use super::app::AppState;
+use super::app::{AppContextInner, AppState};
 use super::OsError;
 use crate::{
     AppContext, Bitmap, Cursor, Error, Event, Point, Rect, Response, Result, WindowOptions,
@@ -42,6 +44,10 @@ pub fn register_class() -> Result<*mut Class> {
     decl.add_ivar::<*mut c_void>(WINDOW_STATE);
 
     unsafe {
+        decl.add_method(
+            sel!(windowShouldClose:),
+            window_should_close as extern "C" fn(&Object, Sel, id) -> BOOL,
+        );
         decl.add_method(sel!(dealloc), dealloc as extern "C" fn(&Object, Sel));
     }
 
@@ -50,6 +56,14 @@ pub fn register_class() -> Result<*mut Class> {
 
 pub unsafe fn unregister_class(class: *mut Class) {
     objc_disposeClassPair(class);
+}
+
+extern "C" fn window_should_close(this: &Object, _: Sel, _sender: id) -> BOOL {
+    let state = unsafe { WindowState::from_view(this) };
+
+    state.handle_event(Event::Close);
+
+    NO
 }
 
 extern "C" fn dealloc(this: &Object, _: Sel) {
@@ -64,6 +78,31 @@ extern "C" fn dealloc(this: &Object, _: Sel) {
 
 struct WindowState {
     app_state: Rc<AppState>,
+    handler: RefCell<Box<dyn FnMut(&mut dyn Any, &Rc<AppState>, Event) -> Response>>,
+}
+
+impl WindowState {
+    unsafe fn from_view(view: *const Object) -> Rc<WindowState> {
+        let state_ptr = *(*view).get_ivar::<*mut c_void>(WINDOW_STATE) as *const WindowState;
+
+        let state_rc = Rc::from_raw(state_ptr);
+        let state = Rc::clone(&state_rc);
+        let _ = Rc::into_raw(state_rc);
+
+        state
+    }
+
+    fn handle_event(&self, event: Event) -> Option<Response> {
+        if let Ok(mut handler) = self.handler.try_borrow_mut() {
+            if let Ok(mut data) = self.app_state.data.try_borrow_mut() {
+                if let Some(data) = &mut *data {
+                    return Some(handler(&mut **data, &self.app_state, event));
+                }
+            }
+        }
+
+        None
+    }
 }
 
 pub struct WindowInner {
@@ -76,9 +115,10 @@ impl WindowInner {
     pub fn open<T, H>(
         options: &WindowOptions,
         cx: &AppContext<T>,
-        _handler: H,
+        handler: H,
     ) -> Result<WindowInner>
     where
+        T: 'static,
         H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
         H: 'static,
     {
@@ -107,11 +147,21 @@ impl WindowInner {
             let view: id = msg_send![cx.inner.state.class, alloc];
             let view = view.initWithFrame_(rect);
 
+            window.setDelegate_(view);
             window.setContentView_(view);
             window.center();
 
+            let mut handler = handler;
+            let handler_wrapper =
+                move |data_any: &mut dyn Any, app_state: &Rc<AppState>, event: Event<'_>| {
+                    let data = data_any.downcast_mut::<T>().unwrap();
+                    let cx = AppContext::from_inner(AppContextInner::new(app_state));
+                    handler(data, &cx, event)
+                };
+
             let state = Rc::new(WindowState {
                 app_state: Rc::clone(cx.inner.state),
+                handler: RefCell::new(Box::new(handler_wrapper)),
             });
 
             let state_ptr = Rc::into_raw(Rc::clone(&state));
