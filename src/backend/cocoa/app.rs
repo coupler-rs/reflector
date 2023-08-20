@@ -91,6 +91,14 @@ impl<T: 'static> AppInner<T> {
     }
 }
 
+impl<T> Drop for AppInner<T> {
+    fn drop(&mut self) {
+        if let Ok(mut data) = self.state.data.try_borrow_mut() {
+            drop(data.take());
+        }
+    }
+}
+
 pub struct AppContextInner<'a, T> {
     pub state: &'a Rc<AppState>,
     _marker: PhantomData<T>,
