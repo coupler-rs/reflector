@@ -88,15 +88,22 @@ impl WindowInner {
 
             window.setContentView_(view);
             window.center();
-            window.makeKeyAndOrderFront_(nil);
 
             Ok(WindowInner { window, view })
         }
     }
 
-    pub fn show(&self) {}
+    pub fn show(&self) {
+        unsafe {
+            self.window.orderFront_(nil);
+        }
+    }
 
-    pub fn hide(&self) {}
+    pub fn hide(&self) {
+        unsafe {
+            self.window.orderOut_(nil);
+        }
+    }
 
     pub fn present(&self, _bitmap: Bitmap) {}
 
