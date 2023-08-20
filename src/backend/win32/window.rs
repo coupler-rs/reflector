@@ -1,4 +1,5 @@
 use std::alloc::{alloc, dealloc, Layout};
+use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::ffi::{c_int, c_void};
 use std::mem::MaybeUninit;
@@ -18,43 +19,15 @@ use crate::{
     WindowOptions,
 };
 
-pub trait HandleEvent {
-    fn handle_event(&self, event: Event) -> Option<Response>;
-}
-
-pub struct Handler<T, H> {
-    pub app_state: Rc<AppState<T>>,
-    pub handler: RefCell<H>,
-}
-
-impl<T: 'static, H> HandleEvent for Handler<T, H>
-where
-    H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
-{
-    fn handle_event(&self, event: Event) -> Option<Response> {
-        if let Ok(mut handler) = self.handler.try_borrow_mut() {
-            if let Ok(mut data) = self.app_state.data.try_borrow_mut() {
-                if let Some(data) = data.as_mut() {
-                    let cx = AppContext::from_inner(AppContextInner {
-                        state: &self.app_state,
-                    });
-                    return Some(handler(data, &cx, event));
-                }
-            }
-        }
-
-        None
-    }
-}
-
-struct WindowState<H: ?Sized> {
+struct WindowState {
     hwnd: windef::HWND,
     mouse_down_count: Cell<isize>,
     cursor: Cell<Cursor>,
-    handler: H,
+    app_state: Rc<AppState>,
+    handler: RefCell<Box<dyn FnMut(&mut dyn Any, &Rc<AppState>, Event) -> Response>>,
 }
 
-impl WindowState<dyn HandleEvent> {
+impl WindowState {
     fn update_cursor(&self) {
         unsafe {
             let hcursor = match self.cursor.get() {
@@ -74,10 +47,22 @@ impl WindowState<dyn HandleEvent> {
             winuser::SetCursor(hcursor);
         }
     }
+
+    fn handle_event(&self, event: Event) -> Option<Response> {
+        if let Ok(mut handler) = self.handler.try_borrow_mut() {
+            if let Ok(mut data) = self.app_state.data.try_borrow_mut() {
+                if let Some(data) = data.as_mut() {
+                    return Some(handler(&mut **data, &self.app_state, event));
+                }
+            }
+        }
+
+        None
+    }
 }
 
 pub struct WindowInner {
-    state: Rc<WindowState<dyn HandleEvent>>,
+    state: Rc<WindowState>,
 }
 
 impl WindowInner {
@@ -148,20 +133,23 @@ impl WindowInner {
                 }));
             }
 
+            let mut handler = handler;
+            let handler_wrapper =
+                move |data_any: &mut dyn Any, app_state: &Rc<AppState>, event: Event<'_>| {
+                    let data = data_any.downcast_mut::<T>().unwrap();
+                    let cx = AppContext::from_inner(AppContextInner::new(app_state));
+                    handler(data, &cx, event)
+                };
+
             let state = Rc::new(WindowState {
                 hwnd,
                 mouse_down_count: Cell::new(0),
                 cursor: Cell::new(Cursor::Arrow),
-                handler: Handler {
-                    app_state: Rc::clone(cx.inner.state),
-                    handler: RefCell::new(handler),
-                },
+                app_state: Rc::clone(cx.inner.state),
+                handler: RefCell::new(Box::new(handler_wrapper)),
             });
 
-            // We can't store a wide pointer to the WindowState<dyn HandleEvent> in the window's
-            // user data, so we add an extra Box layer:
-            let state_dyn = Rc::clone(&state) as Rc<WindowState<dyn HandleEvent>>;
-            let state_ptr = Box::into_raw(Box::new(state_dyn));
+            let state_ptr = Rc::into_raw(Rc::clone(&state));
             winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, state_ptr as isize);
 
             state
@@ -322,12 +310,13 @@ pub unsafe extern "system" fn wnd_proc(
     wparam: minwindef::WPARAM,
     lparam: minwindef::LPARAM,
 ) -> minwindef::LRESULT {
-    let state_ptr = winuser::GetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA)
-        as *mut Rc<WindowState<dyn HandleEvent>>;
+    let state_ptr = winuser::GetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA) as *const WindowState;
     if !state_ptr.is_null() {
         // Hold a reference to the WindowState for the duration of the wnd_proc, in case the
         // window is closed during an event handler
-        let state = Rc::clone(&*state_ptr);
+        let state_rc = Rc::from_raw(state_ptr);
+        let state = Rc::clone(&state_rc);
+        let _ = Rc::into_raw(state_rc);
 
         match msg {
             winuser::WM_SETCURSOR => {
@@ -375,9 +364,9 @@ pub unsafe extern "system" fn wnd_proc(
                 wingdi::DeleteObject(rgn as *mut c_void);
 
                 // Only validate the dirty region if we successfully invoked the event handler.
-                // This ensures that if we receive an expose event during the App:new builder
+                // This ensures that if we receive an expose event during the App::new builder
                 // callback, we will receive it again later.
-                if state.handler.handle_event(Event::Expose(&rects)).is_some() {
+                if state.handle_event(Event::Expose(&rects)).is_some() {
                     winuser::ValidateRgn(hwnd, ptr::null_mut());
                 }
 
@@ -388,7 +377,7 @@ pub unsafe extern "system" fn wnd_proc(
                     x: windowsx::GET_X_LPARAM(lparam) as f64,
                     y: windowsx::GET_Y_LPARAM(lparam) as f64,
                 };
-                state.handler.handle_event(Event::MouseMove(point));
+                state.handle_event(Event::MouseMove(point));
 
                 return 0;
             }
@@ -444,7 +433,7 @@ pub unsafe extern "system" fn wnd_proc(
                             _ => {}
                         }
 
-                        if state.handler.handle_event(event) == Some(Response::Capture) {
+                        if state.handle_event(event) == Some(Response::Capture) {
                             return 0;
                         }
                     }
@@ -458,16 +447,16 @@ pub unsafe extern "system" fn wnd_proc(
                     _ => unreachable!(),
                 };
 
-                if state.handler.handle_event(Event::Scroll(point)) == Some(Response::Capture) {
+                if state.handle_event(Event::Scroll(point)) == Some(Response::Capture) {
                     return 0;
                 }
             }
             winuser::WM_CLOSE => {
-                state.handler.handle_event(Event::Close);
+                state.handle_event(Event::Close);
                 return 0;
             }
             winuser::WM_DESTROY => {
-                drop(Box::from_raw(state_ptr));
+                drop(Rc::from_raw(state_ptr));
                 winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, 0);
             }
             _ => {}

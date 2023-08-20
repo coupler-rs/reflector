@@ -1,4 +1,6 @@
+use std::any::Any;
 use std::cell::RefCell;
+use std::marker::PhantomData;
 use std::rc::Rc;
 use std::time::Duration;
 use std::{mem, ptr, result};
@@ -9,12 +11,12 @@ use super::window::wnd_proc;
 use super::{hinstance, to_wstring, OsError, TimerHandleInner};
 use crate::{App, AppContext, Error, IntoInnerError, Result};
 
-pub struct AppState<T> {
+pub struct AppState {
     pub class: minwindef::ATOM,
-    pub data: RefCell<Option<T>>,
+    pub data: RefCell<Option<Box<dyn Any>>>,
 }
 
-impl<T> Drop for AppState<T> {
+impl Drop for AppState {
     fn drop(&mut self) {
         unsafe {
             winuser::UnregisterClassW(self.class as *const ntdef::WCHAR, hinstance());
@@ -23,10 +25,11 @@ impl<T> Drop for AppState<T> {
 }
 
 pub struct AppInner<T> {
-    pub state: Rc<AppState<T>>,
+    pub state: Rc<AppState>,
+    _marker: PhantomData<T>,
 }
 
-impl<T> AppInner<T> {
+impl<T: 'static> AppInner<T> {
     pub fn new<F>(build: F) -> Result<AppInner<T>>
     where
         F: FnOnce(&AppContext<T>) -> Result<T>,
@@ -63,12 +66,18 @@ impl<T> AppInner<T> {
             data: RefCell::new(None),
         });
 
-        let cx = AppContext::from_inner(AppContextInner { state: &state });
+        let cx = AppContext::from_inner(AppContextInner {
+            state: &state,
+            _marker: PhantomData,
+        });
         let data = build(&cx)?;
 
-        state.data.replace(Some(data));
+        state.data.replace(Some(Box::new(data)));
 
-        Ok(AppInner { state })
+        Ok(AppInner {
+            state,
+            _marker: PhantomData,
+        })
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -116,40 +125,41 @@ impl<T> AppInner<T> {
         }
     }
 
-    fn take_data(&self) -> Option<T> {
+    pub fn into_inner(self) -> result::Result<T, IntoInnerError<App<T>>> {
         if let Ok(mut data) = self.state.data.try_borrow_mut() {
-            return data.take();
+            if let Some(data) = data.take() {
+                return Ok(*data.downcast().unwrap());
+            }
         }
 
-        None
-    }
-
-    pub fn into_inner(self) -> result::Result<T, IntoInnerError<App<T>>>
-    where
-        T: 'static,
-    {
-        if let Some(data) = self.take_data() {
-            Ok(data)
-        } else {
-            Err(IntoInnerError::new(
-                Error::InsideEventHandler,
-                App::from_inner(self),
-            ))
-        }
+        Err(IntoInnerError::new(
+            Error::InsideEventHandler,
+            App::from_inner(self),
+        ))
     }
 }
 
 impl<T> Drop for AppInner<T> {
     fn drop(&mut self) {
-        drop(self.take_data());
+        if let Ok(mut data) = self.state.data.try_borrow_mut() {
+            drop(data.take());
+        }
     }
 }
 
 pub struct AppContextInner<'a, T> {
-    pub state: &'a Rc<AppState<T>>,
+    pub state: &'a Rc<AppState>,
+    pub _marker: PhantomData<T>,
 }
 
 impl<'a, T> AppContextInner<'a, T> {
+    pub(super) fn new(state: &'a Rc<AppState>) -> AppContextInner<'a, T> {
+        AppContextInner {
+            state,
+            _marker: PhantomData,
+        }
+    }
+
     pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerHandleInner
     where
         H: 'static,
