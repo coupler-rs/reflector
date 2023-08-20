@@ -1,7 +1,8 @@
 use std::ffi::c_void;
+use std::rc::Rc;
 
 use objc::declare::ClassDecl;
-use objc::runtime::{objc_autorelease, objc_disposeClassPair, objc_release, Class};
+use objc::runtime::{objc_autorelease, objc_disposeClassPair, objc_release, Class, Object, Sel};
 use objc::{class, msg_send, sel, sel_impl};
 
 use cocoa::appkit::{NSBackingStoreBuffered, NSView, NSWindow, NSWindowStyleMask};
@@ -10,6 +11,7 @@ use cocoa::foundation::{NSPoint, NSRect, NSSize, NSString};
 
 use raw_window_handle::RawWindowHandle;
 
+use super::app::AppState;
 use super::OsError;
 use crate::{
     AppContext, Bitmap, Cursor, Error, Event, Point, Rect, Response, Result, WindowOptions,
@@ -39,6 +41,10 @@ pub fn register_class() -> Result<*mut Class> {
 
     decl.add_ivar::<*mut c_void>(WINDOW_STATE);
 
+    unsafe {
+        decl.add_method(sel!(dealloc), dealloc as extern "C" fn(&Object, Sel));
+    }
+
     Ok(decl.register() as *const Class as *mut Class)
 }
 
@@ -46,9 +52,24 @@ pub unsafe fn unregister_class(class: *mut Class) {
     objc_disposeClassPair(class);
 }
 
+extern "C" fn dealloc(this: &Object, _: Sel) {
+    unsafe {
+        let state_ptr = *this.get_ivar::<*mut c_void>(WINDOW_STATE) as *const WindowState;
+        drop(Rc::from_raw(state_ptr));
+
+        let superclass = msg_send![this, superclass];
+        let () = msg_send![super(this, superclass), dealloc];
+    }
+}
+
+struct WindowState {
+    app_state: Rc<AppState>,
+}
+
 pub struct WindowInner {
     window: id,
     view: id,
+    state: Rc<WindowState>,
 }
 
 impl WindowInner {
@@ -89,7 +110,18 @@ impl WindowInner {
             window.setContentView_(view);
             window.center();
 
-            Ok(WindowInner { window, view })
+            let state = Rc::new(WindowState {
+                app_state: Rc::clone(cx.inner.state),
+            });
+
+            let state_ptr = Rc::into_raw(Rc::clone(&state));
+            (*view).set_ivar::<*mut c_void>(WINDOW_STATE, state_ptr as *mut c_void);
+
+            Ok(WindowInner {
+                window,
+                view,
+                state,
+            })
         }
     }
 
