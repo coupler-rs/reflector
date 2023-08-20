@@ -87,7 +87,7 @@ pub struct AppContextInner<'a, T> {
 }
 
 impl<'a, T> AppContextInner<'a, T> {
-    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerHandleInner
+    pub fn set_timer<H>(&self, _duration: Duration, _handler: H) -> TimerHandleInner
     where
         H: 'static,
         H: FnMut(&mut T, &AppContext<T>),

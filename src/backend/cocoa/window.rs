@@ -94,13 +94,13 @@ impl WindowInner {
 
     pub fn hide(&self) {}
 
-    pub fn present(&self, bitmap: Bitmap) {}
+    pub fn present(&self, _bitmap: Bitmap) {}
 
-    pub fn present_partial(&self, bitmap: Bitmap, rects: &[Rect]) {}
+    pub fn present_partial(&self, _bitmap: Bitmap, _rects: &[Rect]) {}
 
     pub fn set_cursor(&self, _cursor: Cursor) {}
 
-    pub fn set_mouse_position(&self, position: Point) {}
+    pub fn set_mouse_position(&self, _position: Point) {}
 
     pub fn raw_window_handle(&self) -> RawWindowHandle {
         unimplemented!()
