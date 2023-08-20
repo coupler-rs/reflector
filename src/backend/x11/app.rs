@@ -117,10 +117,6 @@ pub struct AppState {
 impl Drop for AppState {
     fn drop(&mut self) {
         unsafe {
-            for (_window_id, window) in self.windows.take().drain() {
-                window.destroy(&self);
-            }
-
             if let Some(cursor_id) = self.cursor_cache.borrow().get(&Cursor::None) {
                 xcb::xcb_free_cursor(self.connection, *cursor_id);
             }
