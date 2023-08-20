@@ -9,7 +9,7 @@ use objc::rc::autoreleasepool;
 use objc::runtime::Class;
 
 use cocoa::appkit::{NSApp, NSApplication, NSApplicationActivationPolicyRegular};
-use cocoa::base::nil;
+use cocoa::base::{nil, YES};
 
 use super::window::{register_class, unregister_class};
 use super::TimerHandleInner;
@@ -66,6 +66,7 @@ impl<T: 'static> AppInner<T> {
         autoreleasepool(|| unsafe {
             let app = NSApp();
             app.setActivationPolicy_(NSApplicationActivationPolicyRegular);
+            app.activateIgnoringOtherApps_(YES);
             app.run();
 
             Ok(())
