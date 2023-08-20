@@ -1,12 +1,12 @@
 use std::ffi::c_void;
 
 use objc::declare::ClassDecl;
-use objc::runtime::{objc_disposeClassPair, objc_release, Class};
+use objc::runtime::{objc_autorelease, objc_disposeClassPair, objc_release, Class};
 use objc::{class, msg_send, sel, sel_impl};
 
 use cocoa::appkit::{NSBackingStoreBuffered, NSView, NSWindow, NSWindowStyleMask};
 use cocoa::base::{id, nil, NO};
-use cocoa::foundation::{NSPoint, NSRect, NSSize};
+use cocoa::foundation::{NSPoint, NSRect, NSSize, NSString};
 
 use raw_window_handle::RawWindowHandle;
 
@@ -78,6 +78,10 @@ impl WindowInner {
                 NSBackingStoreBuffered,
                 NO,
             );
+
+            let title = NSString::init_str(NSString::alloc(nil), &options.title);
+            objc_autorelease(title);
+            window.setTitle_(title);
 
             let view: id = msg_send![cx.inner.state.class, alloc];
             let view = view.initWithFrame_(rect);
