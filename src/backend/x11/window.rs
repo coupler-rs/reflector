@@ -10,7 +10,8 @@ use xcb_sys as xcb;
 use super::app::{AppContextInner, AppState};
 use super::OsError;
 use crate::{
-    AppContext, Bitmap, Cursor, Error, Event, Point, Rect, Response, Result, WindowOptions,
+    AppContext, Bitmap, Cursor, Error, Event, Point, RawParent, Rect, Response, Result,
+    WindowOptions,
 };
 
 pub struct ShmState {
@@ -111,7 +112,15 @@ impl WindowInner {
         unsafe {
             let window_id = xcb::xcb_generate_id(cx.inner.state.connection);
 
-            let parent_id = (*cx.inner.state.screen).root;
+            let parent_id = if let Some(parent) = options.parent {
+                if let RawParent::X11(parent_id) = parent {
+                    parent_id as xcb::xcb_window_t
+                } else {
+                    return Err(Error::InvalidWindowHandle);
+                }
+            } else {
+                (*cx.inner.state.screen).root
+            };
 
             let value_mask = xcb::XCB_CW_EVENT_MASK;
             let value_list = &[xcb::XCB_EVENT_MASK_EXPOSURE
