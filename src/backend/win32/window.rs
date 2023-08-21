@@ -14,8 +14,8 @@ use winapi::{
 use super::app::{AppContextInner, AppState};
 use super::{hinstance, to_wstring, OsError};
 use crate::{
-    AppContext, Bitmap, Cursor, Error, Event, MouseButton, RawParent, Point, Rect, Response, Result,
-    WindowOptions,
+    AppContext, Bitmap, Cursor, Error, Event, MouseButton, Point, RawParent, Rect, Response,
+    Result, WindowOptions,
 };
 
 struct WindowState {
