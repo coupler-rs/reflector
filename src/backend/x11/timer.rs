@@ -132,11 +132,8 @@ pub struct TimerHandleInner {
 
 impl TimerHandleInner {
     pub fn cancel(self) {
-        let app_state = self
-            .app_state
-            .upgrade()
-            .expect("attempted to use TimerHandle after App has been dropped");
-
-        app_state.timer_state.timers.borrow_mut().remove(&self.timer_id);
+        if let Some(app_state) = self.app_state.upgrade() {
+            app_state.timer_state.timers.borrow_mut().remove(&self.timer_id);
+        }
     }
 }
