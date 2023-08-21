@@ -8,13 +8,14 @@ use objc::runtime::{objc_autorelease, objc_disposeClassPair, objc_release, Class
 use objc::{class, msg_send, sel, sel_impl};
 
 use cocoa::appkit::{NSBackingStoreBuffered, NSView, NSWindow, NSWindowStyleMask};
-use cocoa::base::{id, nil, BOOL, NO};
+use cocoa::base::{id, nil, BOOL, NO, YES};
 use cocoa::foundation::{NSPoint, NSRect, NSSize, NSString};
 
 use super::app::{AppContextInner, AppState};
 use super::OsError;
 use crate::{
-    AppContext, Bitmap, Cursor, Error, Event, Point, Rect, Response, Result, WindowOptions,
+    AppContext, Bitmap, Cursor, Error, Event, Point, RawParent, Rect, Response, Result,
+    WindowOptions,
 };
 
 const WINDOW_STATE: &str = "windowState";
@@ -104,8 +105,8 @@ impl WindowState {
 }
 
 pub struct WindowInner {
-    window: id,
     view: id,
+    window: Option<id>,
     state: Rc<WindowState>,
 }
 
@@ -126,28 +127,18 @@ impl WindowInner {
                 NSSize::new(options.rect.width, options.rect.height),
             );
 
-            let style_mask = NSWindowStyleMask::NSTitledWindowMask
-                | NSWindowStyleMask::NSClosableWindowMask
-                | NSWindowStyleMask::NSMiniaturizableWindowMask
-                | NSWindowStyleMask::NSResizableWindowMask;
-
-            let window = NSWindow::alloc(nil).initWithContentRect_styleMask_backing_defer_(
-                rect,
-                style_mask,
-                NSBackingStoreBuffered,
-                NO,
-            );
-
-            let title = NSString::init_str(NSString::alloc(nil), &options.title);
-            objc_autorelease(title);
-            window.setTitle_(title);
+            let parent_view = if let Some(parent) = options.parent {
+                if let RawParent::Cocoa(parent_view) = parent {
+                    Some(parent_view as id)
+                } else {
+                    return Err(Error::InvalidWindowHandle);
+                }
+            } else {
+                None
+            };
 
             let view: id = msg_send![cx.inner.state.class, alloc];
             let view = view.initWithFrame_(rect);
-
-            window.setDelegate_(view);
-            window.setContentView_(view);
-            window.center();
 
             let mut handler = handler;
             let handler_wrapper =
@@ -165,9 +156,40 @@ impl WindowInner {
             let state_ptr = Rc::into_raw(Rc::clone(&state));
             (*view).set_ivar::<*mut c_void>(WINDOW_STATE, state_ptr as *mut c_void);
 
+            if let Some(parent_view) = parent_view {
+                let () = msg_send![view, setHidden: YES];
+                parent_view.addSubview_(view);
+            }
+
+            let window = if parent_view.is_none() {
+                let style_mask = NSWindowStyleMask::NSTitledWindowMask
+                    | NSWindowStyleMask::NSClosableWindowMask
+                    | NSWindowStyleMask::NSMiniaturizableWindowMask
+                    | NSWindowStyleMask::NSResizableWindowMask;
+
+                let window = NSWindow::alloc(nil).initWithContentRect_styleMask_backing_defer_(
+                    rect,
+                    style_mask,
+                    NSBackingStoreBuffered,
+                    NO,
+                );
+
+                let title = NSString::init_str(NSString::alloc(nil), &options.title);
+                objc_autorelease(title);
+                window.setTitle_(title);
+
+                window.setDelegate_(view);
+                window.setContentView_(view);
+                window.center();
+
+                Some(window)
+            } else {
+                None
+            };
+
             Ok(WindowInner {
-                window,
                 view,
+                window,
                 state,
             })
         }
@@ -175,13 +197,21 @@ impl WindowInner {
 
     pub fn show(&self) {
         unsafe {
-            self.window.orderFront_(nil);
+            if let Some(window) = self.window {
+                window.orderFront_(nil);
+            } else {
+                let () = msg_send![self.view, setHidden: NO];
+            }
         }
     }
 
     pub fn hide(&self) {
         unsafe {
-            self.window.orderOut_(nil);
+            if let Some(window) = self.window {
+                window.orderOut_(nil);
+            } else {
+                let () = msg_send![self.view, setHidden: YES];
+            }
         }
     }
 
@@ -197,7 +227,10 @@ impl WindowInner {
 impl Drop for WindowInner {
     fn drop(&mut self) {
         unsafe {
-            self.window.close();
+            if let Some(window) = self.window {
+                window.close();
+            }
+
             objc_release(self.view);
         }
     }
