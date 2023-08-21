@@ -5,7 +5,6 @@ use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
 use std::{mem, ptr, slice};
 
-use raw_window_handle::{unix::XcbHandle, RawWindowHandle};
 use xcb_sys as xcb;
 
 use super::app::{AppContextInner, AppState};
@@ -391,14 +390,6 @@ impl WindowInner {
             );
             xcb::xcb_flush(self.state.app_state.connection);
         }
-    }
-
-    pub fn raw_window_handle(&self) -> RawWindowHandle {
-        RawWindowHandle::Xcb(XcbHandle {
-            window: self.state.window_id,
-            connection: self.state.app_state.connection as *mut c_void,
-            ..XcbHandle::empty()
-        })
     }
 }
 

@@ -6,7 +6,6 @@ use std::mem::MaybeUninit;
 use std::rc::Rc;
 use std::{mem, ptr, slice};
 
-use raw_window_handle::{windows::WindowsHandle, RawWindowHandle};
 use winapi::{
     shared::minwindef, shared::ntdef, shared::windef, shared::windowsx, um::errhandlingapi,
     um::wingdi, um::winuser,
@@ -15,7 +14,7 @@ use winapi::{
 use super::app::{AppContextInner, AppState};
 use super::{hinstance, to_wstring, OsError};
 use crate::{
-    AppContext, Bitmap, Cursor, Error, Event, MouseButton, Parent, Point, Rect, Response, Result,
+    AppContext, Bitmap, Cursor, Error, Event, MouseButton, RawParent, Point, Rect, Response, Result,
     WindowOptions,
 };
 
@@ -81,7 +80,7 @@ impl WindowInner {
 
             let mut style = winuser::WS_CLIPCHILDREN | winuser::WS_CLIPSIBLINGS;
 
-            if let Some(Parent::Raw(_)) = options.parent {
+            if options.parent.is_some() {
                 style |= winuser::WS_CHILD;
             } else {
                 style |= winuser::WS_CAPTION
@@ -99,13 +98,9 @@ impl WindowInner {
             };
             winuser::AdjustWindowRectEx(&mut rect, style, minwindef::FALSE, 0);
 
-            let parent = if let Some(Parent::Raw(parent)) = options.parent {
-                if let RawWindowHandle::Windows(handle) = parent {
-                    if !handle.hwnd.is_null() {
-                        handle.hwnd as windef::HWND
-                    } else {
-                        return Err(Error::InvalidWindowHandle);
-                    }
+            let parent = if let Some(parent) = options.parent {
+                if let RawParent::Win32(hwnd) = parent {
+                    hwnd as windef::HWND
                 } else {
                     return Err(Error::InvalidWindowHandle);
                 }
@@ -283,13 +278,6 @@ impl WindowInner {
             winuser::ClientToScreen(self.hwnd, &mut point);
             winuser::SetCursorPos(point.x, point.y);
         }
-    }
-
-    pub fn raw_window_handle(&self) -> RawWindowHandle {
-        RawWindowHandle::Windows(WindowsHandle {
-            hwnd: self.hwnd as *mut c_void,
-            ..WindowsHandle::empty()
-        })
     }
 }
 

@@ -1,7 +1,6 @@
+use std::ffi::{c_ulong, c_void};
 use std::fmt;
 use std::marker::PhantomData;
-
-use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 
 use crate::{backend, AppContext, Result};
 
@@ -125,20 +124,21 @@ pub enum Response {
     Ignore,
 }
 
-#[derive(Clone, Debug)]
-pub(crate) enum Parent<'a> {
-    Window(&'a Window),
-    Raw(RawWindowHandle),
+#[derive(Copy, Clone, Debug)]
+pub enum RawParent {
+    Win32(*mut c_void),
+    Cocoa(*mut c_void),
+    X11(c_ulong),
 }
 
 #[derive(Clone, Debug)]
-pub struct WindowOptions<'a> {
+pub struct WindowOptions {
     pub(crate) title: String,
     pub(crate) rect: Rect,
-    pub(crate) parent: Option<Parent<'a>>,
+    pub(crate) parent: Option<RawParent>,
 }
 
-impl<'a> Default for WindowOptions<'a> {
+impl Default for WindowOptions {
     fn default() -> Self {
         WindowOptions {
             title: String::new(),
@@ -153,8 +153,8 @@ impl<'a> Default for WindowOptions<'a> {
     }
 }
 
-impl<'a> WindowOptions<'a> {
-    pub fn new() -> WindowOptions<'a> {
+impl WindowOptions {
+    pub fn new() -> WindowOptions {
         Self::default()
     }
 
@@ -180,13 +180,8 @@ impl<'a> WindowOptions<'a> {
         self
     }
 
-    pub fn parent(&mut self, parent: &'a Window) -> &mut Self {
-        self.parent = Some(Parent::Window(parent));
-        self
-    }
-
-    pub unsafe fn raw_parent(&mut self, parent: RawWindowHandle) -> &mut Self {
-        self.parent = Some(Parent::Raw(parent));
+    pub unsafe fn raw_parent(&mut self, parent: RawParent) -> &mut Self {
+        self.parent = Some(parent);
         self
     }
 
@@ -244,11 +239,5 @@ impl Window {
 impl fmt::Debug for Window {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("Window").finish_non_exhaustive()
-    }
-}
-
-unsafe impl HasRawWindowHandle for Window {
-    fn raw_window_handle(&self) -> RawWindowHandle {
-        self.inner.raw_window_handle()
     }
 }

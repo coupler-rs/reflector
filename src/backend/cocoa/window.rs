@@ -11,8 +11,6 @@ use cocoa::appkit::{NSBackingStoreBuffered, NSView, NSWindow, NSWindowStyleMask}
 use cocoa::base::{id, nil, BOOL, NO};
 use cocoa::foundation::{NSPoint, NSRect, NSSize, NSString};
 
-use raw_window_handle::RawWindowHandle;
-
 use super::app::{AppContextInner, AppState};
 use super::OsError;
 use crate::{
@@ -194,10 +192,6 @@ impl WindowInner {
     pub fn set_cursor(&self, _cursor: Cursor) {}
 
     pub fn set_mouse_position(&self, _position: Point) {}
-
-    pub fn raw_window_handle(&self) -> RawWindowHandle {
-        unimplemented!()
-    }
 }
 
 impl Drop for WindowInner {
