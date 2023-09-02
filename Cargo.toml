@@ -12,6 +12,7 @@ winapi = { version = "0.3.8", features = ["std", "winuser", "windef", "minwindef
 uuid = { version = "0.8", features = ["v4"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.9.3"
 objc = { version = "0.2.7", features = ["exception"] }
 cocoa = "0.24.0"
 getrandom = "0.2.10"

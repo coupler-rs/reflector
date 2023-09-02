@@ -1,6 +1,7 @@
 use std::fmt;
 
 mod app;
+mod ffi;
 mod window;
 
 pub use app::{AppContextInner, AppInner};
