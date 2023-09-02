@@ -15,7 +15,7 @@ use super::app::{AppContextInner, AppState};
 use super::{hinstance, to_wstring, OsError};
 use crate::{
     AppContext, Bitmap, Cursor, Error, Event, MouseButton, Point, RawParent, Rect, Response,
-    Result, WindowOptions,
+    Result, WindowOptions, Size,
 };
 
 struct WindowState {
@@ -160,6 +160,14 @@ impl WindowInner {
         unsafe {
             winuser::ShowWindow(self.hwnd, winuser::SW_HIDE);
         }
+    }
+
+    pub fn size(&self) -> Size {
+        unimplemented!()
+    }
+
+    pub fn scale(&self) -> f64 {
+        unimplemented!()
     }
 
     pub fn present(&self, bitmap: Bitmap) {

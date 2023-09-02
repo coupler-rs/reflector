@@ -15,7 +15,7 @@ use super::app::{AppContextInner, AppState};
 use super::OsError;
 use crate::{
     AppContext, Bitmap, Cursor, Error, Event, Point, RawParent, Rect, Response, Result,
-    WindowOptions,
+    WindowOptions, Size,
 };
 
 const WINDOW_STATE: &str = "windowState";
@@ -213,6 +213,14 @@ impl WindowInner {
                 let () = msg_send![self.view, setHidden: YES];
             }
         }
+    }
+
+    pub fn size(&self) -> Size {
+        unimplemented!()
+    }
+
+    pub fn scale(&self) -> f64 {
+        unimplemented!()
     }
 
     pub fn present(&self, _bitmap: Bitmap) {}

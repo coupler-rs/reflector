@@ -219,6 +219,14 @@ impl Window {
         self.inner.hide();
     }
 
+    pub fn size(&self) -> Size {
+        self.inner.size()
+    }
+
+    pub fn scale(&self) -> f64 {
+        self.inner.scale()
+    }
+
     pub fn present(&self, bitmap: Bitmap) {
         self.inner.present(bitmap);
     }

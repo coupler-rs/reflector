@@ -11,7 +11,7 @@ use super::app::{AppContextInner, AppState};
 use super::OsError;
 use crate::{
     AppContext, Bitmap, Cursor, Error, Event, Point, RawParent, Rect, Response, Result,
-    WindowOptions,
+    WindowOptions, Size,
 };
 
 pub struct ShmState {
@@ -218,6 +218,14 @@ impl WindowInner {
             xcb::xcb_unmap_window(self.state.app_state.connection, self.state.window_id);
             xcb::xcb_flush(self.state.app_state.connection);
         }
+    }
+
+    pub fn size(&self) -> Size {
+        unimplemented!()
+    }
+
+    pub fn scale(&self) -> f64 {
+        unimplemented!()
     }
 
     pub fn present(&self, bitmap: Bitmap) {
