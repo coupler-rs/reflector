@@ -13,7 +13,7 @@ use cocoa::base::{nil, YES};
 
 use super::window::{register_class, unregister_class};
 use super::TimerHandleInner;
-use crate::{App, AppContext, Error, IntoInnerError, Result};
+use crate::{App, AppContext, AppOptions, Error, IntoInnerError, Result};
 
 pub struct AppState {
     pub class: *mut Class,
@@ -34,7 +34,7 @@ pub struct AppInner<T> {
 }
 
 impl<T: 'static> AppInner<T> {
-    pub fn new<F>(build: F) -> Result<AppInner<T>>
+    pub fn new<F>(_options: &AppOptions, build: F) -> Result<AppInner<T>>
     where
         F: FnOnce(&AppContext<T>) -> Result<T>,
         T: 'static,

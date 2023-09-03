@@ -14,7 +14,8 @@ use super::timer::{TimerHandleInner, TimerState};
 use super::window::WindowState;
 use super::OsError;
 use crate::{
-    App, AppContext, Cursor, Error, Event, IntoInnerError, MouseButton, Point, Rect, Result,
+    App, AppContext, AppOptions, Cursor, Error, Event, IntoInnerError, MouseButton, Point, Rect,
+    Result,
 };
 
 fn mouse_button_from_code(code: xcb::xcb_button_t) -> Option<MouseButton> {
@@ -134,7 +135,7 @@ pub struct AppInner<T> {
 }
 
 impl<T: 'static> AppInner<T> {
-    pub fn new<F>(build: F) -> Result<AppInner<T>>
+    pub fn new<F>(_options: &AppOptions, build: F) -> Result<AppInner<T>>
     where
         F: FnOnce(&AppContext<T>) -> Result<T>,
         T: 'static,

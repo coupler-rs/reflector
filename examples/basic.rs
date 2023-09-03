@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use portlight::{App, AppContext, Bitmap, Event, Response, Size, Window, WindowOptions};
+use portlight::{AppContext, AppOptions, Bitmap, Event, Response, Size, Window, WindowOptions};
 
 struct State {
     window: Window,
@@ -44,22 +44,23 @@ impl State {
 }
 
 fn main() {
-    App::new(|cx| {
-        let window = WindowOptions::new()
-            .title("window")
-            .size(Size::new(512.0, 512.0))
-            .open(cx, State::handle_event)
-            .unwrap();
+    let mut app = AppOptions::new()
+        .build(|cx| {
+            let window = WindowOptions::new()
+                .title("window")
+                .size(Size::new(512.0, 512.0))
+                .open(cx, State::handle_event)
+                .unwrap();
 
-        window.show();
+            window.show();
 
-        cx.set_timer(Duration::from_millis(1000), |_, _| {
-            println!("timer");
-        });
+            cx.set_timer(Duration::from_millis(1000), |_, _| {
+                println!("timer");
+            });
 
-        Ok(State { window: window })
-    })
-    .unwrap()
-    .run()
-    .unwrap();
+            Ok(State { window: window })
+        })
+        .unwrap();
+
+    app.run().unwrap();
 }

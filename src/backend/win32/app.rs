@@ -9,7 +9,7 @@ use winapi::{shared::minwindef, shared::ntdef, um::errhandlingapi, um::winuser};
 
 use super::window::wnd_proc;
 use super::{hinstance, to_wstring, OsError, TimerHandleInner};
-use crate::{App, AppContext, Error, IntoInnerError, Result};
+use crate::{App, AppContext, AppOptions, Error, IntoInnerError, Result};
 
 pub struct AppState {
     pub class: minwindef::ATOM,
@@ -30,7 +30,7 @@ pub struct AppInner<T> {
 }
 
 impl<T: 'static> AppInner<T> {
-    pub fn new<F>(build: F) -> Result<AppInner<T>>
+    pub fn new<F>(_options: &AppOptions, build: F) -> Result<AppInner<T>>
     where
         F: FnOnce(&AppContext<T>) -> Result<T>,
         T: 'static,

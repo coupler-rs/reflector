@@ -22,6 +22,44 @@ impl fmt::Debug for TimerHandle {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum AppMode {
+    Owner,
+    Guest,
+}
+
+#[derive(Clone, Debug)]
+pub struct AppOptions {
+    pub(crate) mode: AppMode,
+}
+
+impl Default for AppOptions {
+    fn default() -> Self {
+        AppOptions {
+            mode: AppMode::Owner,
+        }
+    }
+}
+
+impl AppOptions {
+    pub fn new() -> AppOptions {
+        Self::default()
+    }
+
+    pub fn mode(&mut self, mode: AppMode) -> &mut Self {
+        self.mode = mode;
+        self
+    }
+
+    pub fn build<T, F>(&self, build: F) -> Result<App<T>>
+    where
+        F: FnOnce(&AppContext<T>) -> Result<T>,
+        T: 'static,
+    {
+        Ok(App::from_inner(backend::AppInner::new(self, build)?))
+    }
+}
+
 pub struct App<T> {
     inner: backend::AppInner<T>,
     // ensure !Send and !Sync on all platforms
@@ -34,14 +72,6 @@ impl<T: 'static> App<T> {
             inner,
             _marker: PhantomData,
         }
-    }
-
-    pub fn new<F>(build: F) -> Result<App<T>>
-    where
-        F: FnOnce(&AppContext<T>) -> Result<T>,
-        T: 'static,
-    {
-        Ok(App::from_inner(backend::AppInner::new(build)?))
     }
 
     pub fn run(&mut self) -> Result<()> {
