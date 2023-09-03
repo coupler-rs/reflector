@@ -216,11 +216,13 @@ impl WindowInner {
     }
 
     pub fn size(&self) -> Size {
-        unimplemented!()
+        let frame = unsafe { NSView::frame(self.view) };
+
+        Size::new(frame.size.width, frame.size.height)
     }
 
     pub fn scale(&self) -> f64 {
-        unimplemented!()
+        unsafe { self.view.backingScaleFactor() }
     }
 
     pub fn present(&self, _bitmap: Bitmap) {}
