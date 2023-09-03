@@ -14,8 +14,8 @@ use cocoa::foundation::{NSPoint, NSRect, NSSize, NSString};
 use super::app::{AppContextInner, AppState};
 use super::OsError;
 use crate::{
-    AppContext, Bitmap, Cursor, Error, Event, Point, RawParent, Rect, Response, Result,
-    WindowOptions, Size,
+    AppContext, Bitmap, Cursor, Error, Event, Point, RawParent, Rect, Response, Result, Size,
+    WindowOptions,
 };
 
 const WINDOW_STATE: &str = "windowState";

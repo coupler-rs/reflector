@@ -15,7 +15,7 @@ use super::app::{AppContextInner, AppState};
 use super::{hinstance, to_wstring, OsError};
 use crate::{
     AppContext, Bitmap, Cursor, Error, Event, MouseButton, Point, RawParent, Rect, Response,
-    Result, WindowOptions, Size,
+    Result, Size, WindowOptions,
 };
 
 struct WindowState {
