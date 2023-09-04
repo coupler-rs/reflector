@@ -2,8 +2,14 @@ use std::time::Duration;
 
 use portlight::{AppContext, AppOptions, Bitmap, Event, Response, Size, Window, WindowOptions};
 
+const WIDTH: usize = 512;
+const HEIGHT: usize = 512;
+
 struct State {
     window: Window,
+    framebuffer: Vec<u32>,
+    width: usize,
+    height: usize,
 }
 
 impl Drop for State {
@@ -17,7 +23,7 @@ impl State {
         match event {
             Event::Expose(rects) => {
                 println!("expose: {:?}", rects);
-                self.window.present(Bitmap::new(&[0xFFFF00FF; 512 * 512], 512, 512));
+                self.window.present(Bitmap::new(&self.framebuffer, self.width, self.height));
             }
             Event::MouseMove(pos) => {
                 println!("mouse move: {:?}", pos);
@@ -52,13 +58,24 @@ fn main() {
                 .open(cx, State::handle_event)
                 .unwrap();
 
-            window.show();
-
             cx.set_timer(Duration::from_millis(1000), |_, _| {
                 println!("timer");
             });
 
-            Ok(State { window: window })
+            let scale = window.scale();
+            let width = (WIDTH as f64 * scale) as usize;
+            let height = (HEIGHT as f64 * scale) as usize;
+            let framebuffer = vec![0xFFFF00FF; width * height];
+            window.present(Bitmap::new(&framebuffer, width, height));
+
+            window.show();
+
+            Ok(State {
+                window,
+                framebuffer,
+                width,
+                height,
+            })
         })
         .unwrap();
 
