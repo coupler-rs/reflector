@@ -12,6 +12,7 @@ use cocoa::base::{id, nil, BOOL, NO, YES};
 use cocoa::foundation::{NSPoint, NSRect, NSSize, NSString};
 
 use super::app::{AppContextInner, AppState};
+use super::surface::Surface;
 use super::OsError;
 use crate::{
     AppContext, Bitmap, Cursor, Error, Event, Point, RawParent, Rect, Response, Result, Size,
@@ -76,6 +77,7 @@ extern "C" fn dealloc(this: &Object, _: Sel) {
 }
 
 struct WindowState {
+    surface: RefCell<Surface>,
     app_state: Rc<AppState>,
     handler: RefCell<Box<dyn FnMut(&mut dyn Any, &Rc<AppState>, Event) -> Response>>,
 }
@@ -140,6 +142,18 @@ impl WindowInner {
             let view: id = msg_send![cx.inner.state.class, alloc];
             let view = view.initWithFrame_(rect);
 
+            let scale = view.backingScaleFactor();
+
+            let surface = Surface::new(
+                (scale * options.rect.width) as usize,
+                (scale * options.rect.height) as usize,
+            );
+
+            view.setLayer(surface.layer.id());
+            view.setWantsLayer(YES);
+
+            surface.layer.set_contents_scale(scale);
+
             let mut handler = handler;
             let handler_wrapper =
                 move |data_any: &mut dyn Any, app_state: &Rc<AppState>, event: Event<'_>| {
@@ -149,6 +163,7 @@ impl WindowInner {
                 };
 
             let state = Rc::new(WindowState {
+                surface: RefCell::new(surface),
                 app_state: Rc::clone(cx.inner.state),
                 handler: RefCell::new(Box::new(handler_wrapper)),
             });
@@ -225,9 +240,30 @@ impl WindowInner {
         unsafe { self.view.backingScaleFactor() }
     }
 
-    pub fn present(&self, _bitmap: Bitmap) {}
+    pub fn present(&self, bitmap: Bitmap) {
+        let mut surface = self.state.surface.borrow_mut();
 
-    pub fn present_partial(&self, _bitmap: Bitmap, _rects: &[Rect]) {}
+        let width = surface.width;
+        let height = surface.height;
+        let copy_width = bitmap.width().min(width);
+        let copy_height = bitmap.height().min(height);
+
+        surface.with_buffer(|buffer| {
+            for row in 0..copy_height {
+                let src = &bitmap.data()[row * bitmap.width()..row * bitmap.width() + copy_width];
+                let dst = &mut buffer[row * width..row * width + copy_width];
+                dst.copy_from_slice(src);
+            }
+        });
+
+        unsafe {
+            let () = msg_send![surface.layer.id(), setContentsChanged];
+        }
+    }
+
+    pub fn present_partial(&self, bitmap: Bitmap, _rects: &[Rect]) {
+        self.present(bitmap);
+    }
 
     pub fn set_cursor(&self, _cursor: Cursor) {}
 

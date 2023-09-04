@@ -2,6 +2,7 @@ use std::fmt;
 
 mod app;
 mod ffi;
+mod surface;
 mod window;
 
 pub use app::{AppContextInner, AppInner};
