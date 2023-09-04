@@ -1,5 +1,5 @@
 use std::any::Any;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 use std::rc::Rc;
 
@@ -92,6 +92,10 @@ pub fn register_class() -> Result<*mut Class> {
         decl.add_method(
             sel!(scrollWheel:),
             scroll_wheel as extern "C" fn(&Object, Sel, id),
+        );
+        decl.add_method(
+            sel!(cursorUpdate:),
+            cursor_update as extern "C" fn(&Object, Sel, id),
         );
         decl.add_method(
             sel!(windowShouldClose:),
@@ -245,6 +249,12 @@ extern "C" fn scroll_wheel(this: &Object, _: Sel, event: id) {
     }
 }
 
+extern "C" fn cursor_update(this: &Object, _: Sel, _event: id) {
+    let state = unsafe { WindowState::from_view(this) };
+
+    state.update_cursor();
+}
+
 extern "C" fn window_should_close(this: &Object, _: Sel, _sender: id) -> BOOL {
     let state = unsafe { WindowState::from_view(this) };
 
@@ -265,6 +275,7 @@ extern "C" fn dealloc(this: &Object, _: Sel) {
 
 struct WindowState {
     surface: RefCell<Surface>,
+    cursor: Cell<Cursor>,
     app_state: Rc<AppState>,
     handler: RefCell<Box<dyn FnMut(&mut dyn Any, &Rc<AppState>, Event) -> Response>>,
 }
@@ -290,6 +301,38 @@ impl WindowState {
         }
 
         None
+    }
+
+    fn update_cursor(&self) {
+        let cursor = self.cursor.get();
+
+        let ns_cursor: id = if cursor == Cursor::None {
+            self.app_state.empty_cursor
+        } else {
+            let selector: Sel = match cursor {
+                Cursor::Arrow => sel!(arrowCursor),
+                Cursor::Crosshair => sel!(crosshairCursor),
+                Cursor::Hand => sel!(pointingHandCursor),
+                Cursor::IBeam => sel!(IBeamCursor),
+                Cursor::No => sel!(operationNotAllowedCursor),
+                Cursor::SizeNs => sel!(_windowResizeNorthSouthCursor),
+                Cursor::SizeWe => sel!(_windowResizeEastWestCursor),
+                Cursor::SizeNesw => sel!(_windowResizeNorthEastSouthWestCursor),
+                Cursor::SizeNwse => sel!(_windowResizeNorthWestSouthEastCursor),
+                Cursor::Wait => sel!(_waitCursor),
+                _ => sel!(arrowCursor),
+            };
+
+            unsafe {
+                if msg_send![class!(NSCursor), respondsToSelector: selector] {
+                    msg_send![class!(NSCursor), performSelector: selector]
+                } else {
+                    msg_send![class!(NSCursor), arrowCursor]
+                }
+            }
+        };
+
+        let () = unsafe { msg_send![ns_cursor, set] };
     }
 }
 
@@ -382,6 +425,7 @@ impl WindowInner {
 
             let state = Rc::new(WindowState {
                 surface: RefCell::new(surface),
+                cursor: Cell::new(Cursor::Arrow),
                 app_state: Rc::clone(cx.inner.state),
                 handler: RefCell::new(Box::new(handler_wrapper)),
             });
@@ -483,7 +527,10 @@ impl WindowInner {
         self.present(bitmap);
     }
 
-    pub fn set_cursor(&self, _cursor: Cursor) {}
+    pub fn set_cursor(&self, cursor: Cursor) {
+        self.state.cursor.set(cursor);
+        self.state.update_cursor();
+    }
 
     pub fn set_mouse_position(&self, _position: Point) {}
 }

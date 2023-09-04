@@ -6,10 +6,14 @@ use std::result;
 use std::time::Duration;
 
 use objc::rc::autoreleasepool;
-use objc::runtime::Class;
+use objc::runtime::{objc_release, Class};
+use objc::{msg_send, sel, sel_impl};
 
-use cocoa::appkit::{NSApp, NSApplication, NSApplicationActivationPolicyRegular};
-use cocoa::base::{nil, YES};
+use cocoa::appkit::{
+    NSApp, NSApplication, NSApplicationActivationPolicyRegular, NSCursor, NSImage,
+};
+use cocoa::base::{id, nil, YES};
+use cocoa::foundation::{NSPoint, NSSize};
 
 use super::window::{register_class, unregister_class};
 use super::TimerHandleInner;
@@ -17,12 +21,14 @@ use crate::{App, AppContext, AppOptions, Error, IntoInnerError, Result};
 
 pub struct AppState {
     pub class: *mut Class,
+    pub empty_cursor: id,
     pub data: RefCell<Option<Box<dyn Any>>>,
 }
 
 impl Drop for AppState {
     fn drop(&mut self) {
         unsafe {
+            objc_release(self.empty_cursor);
             unregister_class(self.class);
         }
     }
@@ -42,8 +48,22 @@ impl<T: 'static> AppInner<T> {
         autoreleasepool(|| {
             let class = register_class()?;
 
+            let empty_cursor = unsafe {
+                let empty_cursor_image =
+                    NSImage::initWithSize_(NSImage::alloc(nil), NSSize::new(1.0, 1.0));
+                let empty_cursor: id = msg_send![
+                    NSCursor::alloc(nil),
+                    initWithImage: empty_cursor_image
+                    hotSpot: NSPoint::new(0.0, 0.0)
+                ];
+                objc_release(empty_cursor_image);
+
+                empty_cursor
+            };
+
             let state = Rc::new(AppState {
                 class,
+                empty_cursor,
                 data: RefCell::new(None),
             });
 
