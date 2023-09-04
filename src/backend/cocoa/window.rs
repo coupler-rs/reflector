@@ -7,16 +7,16 @@ use objc::declare::ClassDecl;
 use objc::runtime::{objc_autorelease, objc_disposeClassPair, objc_release, Class, Object, Sel};
 use objc::{class, msg_send, sel, sel_impl};
 
-use cocoa::appkit::{NSBackingStoreBuffered, NSView, NSWindow, NSWindowStyleMask};
+use cocoa::appkit::{NSBackingStoreBuffered, NSEvent, NSView, NSWindow, NSWindowStyleMask};
 use cocoa::base::{id, nil, BOOL, NO, YES};
-use cocoa::foundation::{NSPoint, NSRect, NSSize, NSString};
+use cocoa::foundation::{NSInteger, NSPoint, NSRect, NSSize, NSString, NSUInteger};
 
 use super::app::{AppContextInner, AppState};
 use super::surface::Surface;
 use super::OsError;
 use crate::{
-    AppContext, Bitmap, Cursor, Error, Event, Point, RawParent, Rect, Response, Result, Size,
-    WindowOptions,
+    AppContext, Bitmap, Cursor, Error, Event, MouseButton, Point, RawParent, Rect, Response,
+    Result, Size, WindowOptions,
 };
 
 const WINDOW_STATE: &str = "windowState";
@@ -45,6 +45,55 @@ pub fn register_class() -> Result<*mut Class> {
 
     unsafe {
         decl.add_method(
+            sel!(acceptsFirstMouse:),
+            accepts_first_mouse as extern "C" fn(&Object, Sel, id) -> BOOL,
+        );
+        decl.add_method(
+            sel!(isFlipped),
+            is_flipped as extern "C" fn(&Object, Sel) -> BOOL,
+        );
+        decl.add_method(
+            sel!(mouseMoved:),
+            mouse_moved as extern "C" fn(&Object, Sel, id),
+        );
+        decl.add_method(
+            sel!(mouseDragged:),
+            mouse_moved as extern "C" fn(&Object, Sel, id),
+        );
+        decl.add_method(
+            sel!(rightMouseDragged:),
+            mouse_moved as extern "C" fn(&Object, Sel, id),
+        );
+        decl.add_method(
+            sel!(otherMouseDragged:),
+            mouse_moved as extern "C" fn(&Object, Sel, id),
+        );
+        decl.add_method(
+            sel!(mouseDown:),
+            mouse_down as extern "C" fn(&Object, Sel, id),
+        );
+        decl.add_method(sel!(mouseUp:), mouse_up as extern "C" fn(&Object, Sel, id));
+        decl.add_method(
+            sel!(rightMouseDown:),
+            right_mouse_down as extern "C" fn(&Object, Sel, id),
+        );
+        decl.add_method(
+            sel!(rightMouseUp:),
+            right_mouse_up as extern "C" fn(&Object, Sel, id),
+        );
+        decl.add_method(
+            sel!(otherMouseDown:),
+            other_mouse_down as extern "C" fn(&Object, Sel, id),
+        );
+        decl.add_method(
+            sel!(otherMouseUp:),
+            other_mouse_up as extern "C" fn(&Object, Sel, id),
+        );
+        decl.add_method(
+            sel!(scrollWheel:),
+            scroll_wheel as extern "C" fn(&Object, Sel, id),
+        );
+        decl.add_method(
             sel!(windowShouldClose:),
             window_should_close as extern "C" fn(&Object, Sel, id) -> BOOL,
         );
@@ -56,6 +105,144 @@ pub fn register_class() -> Result<*mut Class> {
 
 pub unsafe fn unregister_class(class: *mut Class) {
     objc_disposeClassPair(class);
+}
+
+extern "C" fn accepts_first_mouse(_this: &Object, _: Sel, _event: id) -> BOOL {
+    YES
+}
+
+extern "C" fn is_flipped(_this: &Object, _: Sel) -> BOOL {
+    YES
+}
+
+extern "C" fn mouse_moved(this: &Object, _: Sel, event: id) {
+    let state = unsafe { WindowState::from_view(this) };
+
+    let this = this as *const Object as id;
+    let point = unsafe { this.convertPoint_fromView_(event.locationInWindow(), nil) };
+    state.handle_event(Event::MouseMove(Point {
+        x: point.x,
+        y: point.y,
+    }));
+}
+
+extern "C" fn mouse_down(this: &Object, _: Sel, event: id) {
+    let state = unsafe { WindowState::from_view(this) };
+
+    let result = state.handle_event(Event::MouseDown(MouseButton::Left));
+
+    if result != Some(Response::Capture) {
+        unsafe {
+            let superclass = msg_send![this, superclass];
+            let () = msg_send![super(this, superclass), mouseDown: event];
+        }
+    }
+}
+
+extern "C" fn mouse_up(this: &Object, _: Sel, event: id) {
+    let state = unsafe { WindowState::from_view(this) };
+
+    let result = state.handle_event(Event::MouseUp(MouseButton::Left));
+
+    if result != Some(Response::Capture) {
+        unsafe {
+            let superclass = msg_send![this, superclass];
+            let () = msg_send![super(this, superclass), mouseUp: event];
+        }
+    }
+}
+
+extern "C" fn right_mouse_down(this: &Object, _: Sel, event: id) {
+    let state = unsafe { WindowState::from_view(this) };
+
+    let result = state.handle_event(Event::MouseDown(MouseButton::Right));
+
+    if result != Some(Response::Capture) {
+        unsafe {
+            let superclass = msg_send![this, superclass];
+            let () = msg_send![super(this, superclass), rightMouseDown: event];
+        }
+    }
+}
+
+extern "C" fn right_mouse_up(this: &Object, _: Sel, event: id) {
+    let state = unsafe { WindowState::from_view(this) };
+
+    let result = state.handle_event(Event::MouseUp(MouseButton::Right));
+
+    if result != Some(Response::Capture) {
+        unsafe {
+            let superclass = msg_send![this, superclass];
+            let () = msg_send![super(this, superclass), rightMouseUp: event];
+        }
+    }
+}
+
+fn mouse_button_from_number(button_number: NSInteger) -> Option<MouseButton> {
+    match button_number {
+        0 => Some(MouseButton::Left),
+        1 => Some(MouseButton::Right),
+        2 => Some(MouseButton::Middle),
+        3 => Some(MouseButton::Back),
+        4 => Some(MouseButton::Forward),
+        _ => None,
+    }
+}
+
+extern "C" fn other_mouse_down(this: &Object, _: Sel, event: id) {
+    let state = unsafe { WindowState::from_view(this) };
+
+    let button_number = unsafe { event.buttonNumber() };
+    let result = if let Some(button) = mouse_button_from_number(button_number) {
+        state.handle_event(Event::MouseDown(button))
+    } else {
+        None
+    };
+
+    if result != Some(Response::Capture) {
+        unsafe {
+            let superclass = msg_send![this, superclass];
+            let () = msg_send![super(this, superclass), otherMouseDown: event];
+        }
+    }
+}
+
+extern "C" fn other_mouse_up(this: &Object, _: Sel, event: id) {
+    let state = unsafe { WindowState::from_view(this) };
+
+    let button_number = unsafe { event.buttonNumber() };
+    let result = if let Some(button) = mouse_button_from_number(button_number) {
+        state.handle_event(Event::MouseUp(button))
+    } else {
+        None
+    };
+
+    if result != Some(Response::Capture) {
+        unsafe {
+            let superclass = msg_send![this, superclass];
+            let () = msg_send![super(this, superclass), otherMouseUp: event];
+        }
+    }
+}
+
+extern "C" fn scroll_wheel(this: &Object, _: Sel, event: id) {
+    let state = unsafe { WindowState::from_view(this) };
+
+    let dx = unsafe { event.scrollingDeltaX() };
+    let dy = unsafe { event.scrollingDeltaY() };
+    let delta = if unsafe { event.hasPreciseScrollingDeltas() } == YES {
+        Point::new(dx, dy)
+    } else {
+        Point::new(32.0 * dx, 32.0 * dy)
+    };
+    let result = state.handle_event(Event::Scroll(delta));
+
+    if result != Some(Response::Capture) {
+        unsafe {
+            let superclass = msg_send![this, superclass];
+            let () = msg_send![super(this, superclass), scrollWheel: event];
+        }
+    }
 }
 
 extern "C" fn window_should_close(this: &Object, _: Sel, _sender: id) -> BOOL {
@@ -153,6 +340,37 @@ impl WindowInner {
             view.setWantsLayer(YES);
 
             surface.layer.set_contents_scale(scale);
+
+            #[allow(non_upper_case_globals)]
+            let tracking_options = {
+                const NSTrackingMouseEnteredAndExited: NSUInteger = 0x1;
+                const NSTrackingMouseMoved: NSUInteger = 0x2;
+                const NSTrackingCursorUpdate: NSUInteger = 0x4;
+                const NSTrackingActiveAlways: NSUInteger = 0x80;
+                const NSTrackingInVisibleRect: NSUInteger = 0x200;
+                const NSTrackingEnabledDuringMouseDrag: NSUInteger = 0x400;
+
+                NSTrackingMouseEnteredAndExited
+                    | NSTrackingMouseMoved
+                    | NSTrackingCursorUpdate
+                    | NSTrackingActiveAlways
+                    | NSTrackingInVisibleRect
+                    | NSTrackingEnabledDuringMouseDrag
+            };
+
+            let tracking_area: id = msg_send![class!(NSTrackingArea), alloc];
+            let tracking_area: id = msg_send![
+                tracking_area,
+                initWithRect: NSRect::new(
+                    NSPoint::new(0.0, 0.0),
+                    NSSize::new(0.0, 0.0),
+                )
+                options: tracking_options
+                owner: view
+                userInfo: nil
+            ];
+            let () = msg_send![view, addTrackingArea: tracking_area];
+            objc_autorelease(tracking_area);
 
             let mut handler = handler;
             let handler_wrapper =
