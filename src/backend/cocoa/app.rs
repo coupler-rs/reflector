@@ -17,7 +17,7 @@ use cocoa::foundation::{NSPoint, NSSize};
 
 use super::timer::{TimerHandleInner, Timers};
 use super::window::{register_class, unregister_class};
-use crate::{App, AppContext, AppOptions, Error, IntoInnerError, Result};
+use crate::{App, AppContext, AppMode, AppOptions, Error, IntoInnerError, Result};
 
 pub struct AppState {
     pub class: *mut Class,
@@ -41,7 +41,7 @@ pub struct AppInner<T> {
 }
 
 impl<T: 'static> AppInner<T> {
-    pub fn new<F>(_options: &AppOptions, build: F) -> Result<AppInner<T>>
+    pub fn new<F>(options: &AppOptions, build: F) -> Result<AppInner<T>>
     where
         F: FnOnce(&AppContext<T>) -> Result<T>,
         T: 'static,
@@ -77,6 +77,14 @@ impl<T: 'static> AppInner<T> {
 
             state.data.replace(Some(Box::new(data)));
 
+            if options.mode == AppMode::Owner {
+                unsafe {
+                    let app = NSApp();
+                    app.setActivationPolicy_(NSApplicationActivationPolicyRegular);
+                    app.activateIgnoringOtherApps_(YES);
+                }
+            }
+
             Ok(AppInner {
                 state,
                 _marker: PhantomData,
@@ -87,8 +95,6 @@ impl<T: 'static> AppInner<T> {
     pub fn run(&mut self) -> Result<()> {
         autoreleasepool(|| unsafe {
             let app = NSApp();
-            app.setActivationPolicy_(NSApplicationActivationPolicyRegular);
-            app.activateIgnoringOtherApps_(YES);
             app.run();
 
             Ok(())
