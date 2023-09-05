@@ -4,7 +4,9 @@ use std::ffi::c_void;
 use std::rc::Rc;
 
 use objc::declare::ClassDecl;
-use objc::runtime::{objc_autorelease, objc_disposeClassPair, objc_release, Class, Object, Sel};
+use objc::runtime::{
+    objc_autorelease, objc_disposeClassPair, objc_release, objc_retain, Class, Object, Sel,
+};
 use objc::{class, msg_send, sel, sel_impl};
 
 use cocoa::appkit::{NSBackingStoreBuffered, NSEvent, NSView, NSWindow, NSWindowStyleMask};
@@ -379,7 +381,7 @@ impl WindowInner {
                 (scale * options.rect.height) as usize,
             );
 
-            view.setLayer(surface.layer.id());
+            view.setLayer(objc_retain(surface.layer.id()));
             view.setWantsLayer(YES);
 
             surface.layer.set_contents_scale(scale);
