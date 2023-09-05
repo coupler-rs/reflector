@@ -15,14 +15,15 @@ use cocoa::appkit::{
 use cocoa::base::{id, nil, YES};
 use cocoa::foundation::{NSPoint, NSSize};
 
+use super::timer::{TimerHandleInner, Timers};
 use super::window::{register_class, unregister_class};
-use super::TimerHandleInner;
 use crate::{App, AppContext, AppOptions, Error, IntoInnerError, Result};
 
 pub struct AppState {
     pub class: *mut Class,
     pub empty_cursor: id,
     pub data: RefCell<Option<Box<dyn Any>>>,
+    pub timer_state: Timers,
 }
 
 impl Drop for AppState {
@@ -65,6 +66,7 @@ impl<T: 'static> AppInner<T> {
                 class,
                 empty_cursor,
                 data: RefCell::new(None),
+                timer_state: Timers::new(),
             });
 
             let cx = AppContext::from_inner(AppContextInner {
@@ -126,7 +128,7 @@ pub struct AppContextInner<'a, T> {
     _marker: PhantomData<T>,
 }
 
-impl<'a, T> AppContextInner<'a, T> {
+impl<'a, T: 'static> AppContextInner<'a, T> {
     pub(super) fn new(state: &'a Rc<AppState>) -> AppContextInner<'a, T> {
         AppContextInner {
             state,
@@ -134,12 +136,12 @@ impl<'a, T> AppContextInner<'a, T> {
         }
     }
 
-    pub fn set_timer<H>(&self, _duration: Duration, _handler: H) -> TimerHandleInner
+    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerHandleInner
     where
         H: 'static,
         H: FnMut(&mut T, &AppContext<T>),
     {
-        TimerHandleInner {}
+        self.state.timer_state.set_timer(self.state, duration, handler)
     }
 
     pub fn exit(&self) {

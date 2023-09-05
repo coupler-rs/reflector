@@ -3,9 +3,11 @@ use std::fmt;
 mod app;
 mod ffi;
 mod surface;
+mod timer;
 mod window;
 
 pub use app::{AppContextInner, AppInner};
+pub use timer::TimerHandleInner;
 pub use window::WindowInner;
 
 #[derive(Debug)]
@@ -19,10 +21,4 @@ impl fmt::Display for OsError {
             OsError::Other(err) => write!(fmt, "{}", err),
         }
     }
-}
-
-pub struct TimerHandleInner {}
-
-impl TimerHandleInner {
-    pub fn cancel(self) {}
 }
