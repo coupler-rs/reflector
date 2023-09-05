@@ -5,9 +5,11 @@ use std::os::windows::ffi::OsStrExt;
 use winapi::{shared::minwindef, shared::ntdef, um::winnt};
 
 mod app;
+mod timer;
 mod window;
 
 pub use app::{AppContextInner, AppInner};
+pub use timer::TimerHandleInner;
 pub use window::WindowInner;
 
 fn hinstance() -> minwindef::HINSTANCE {
@@ -33,10 +35,4 @@ impl fmt::Display for OsError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", self.code)
     }
-}
-
-pub struct TimerHandleInner {}
-
-impl TimerHandleInner {
-    pub fn cancel(self) {}
 }

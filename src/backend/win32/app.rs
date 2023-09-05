@@ -7,12 +7,14 @@ use std::{mem, ptr, result};
 
 use winapi::{shared::minwindef, shared::ntdef, um::errhandlingapi, um::winuser};
 
+use super::timer::{TimerHandleInner, Timers};
 use super::window::wnd_proc;
-use super::{hinstance, to_wstring, OsError, TimerHandleInner};
+use super::{hinstance, to_wstring, OsError};
 use crate::{App, AppContext, AppOptions, Error, IntoInnerError, Result};
 
 pub struct AppState {
     pub class: minwindef::ATOM,
+    pub timers: Timers,
     pub data: RefCell<Option<Box<dyn Any>>>,
 }
 
@@ -61,10 +63,15 @@ impl<T: 'static> AppInner<T> {
             class
         };
 
+        let timers = Timers::new()?;
+
         let state = Rc::new(AppState {
             class,
+            timers,
             data: RefCell::new(None),
         });
+
+        state.timers.set_app_state(&state);
 
         let cx = AppContext::from_inner(AppContextInner {
             state: &state,
@@ -152,7 +159,7 @@ pub struct AppContextInner<'a, T> {
     pub _marker: PhantomData<T>,
 }
 
-impl<'a, T> AppContextInner<'a, T> {
+impl<'a, T: 'static> AppContextInner<'a, T> {
     pub(super) fn new(state: &'a Rc<AppState>) -> AppContextInner<'a, T> {
         AppContextInner {
             state,
@@ -160,12 +167,12 @@ impl<'a, T> AppContextInner<'a, T> {
         }
     }
 
-    pub fn set_timer<H>(&self, _duration: Duration, _handler: H) -> TimerHandleInner
+    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerHandleInner
     where
         H: 'static,
         H: FnMut(&mut T, &AppContext<T>),
     {
-        TimerHandleInner {}
+        self.state.timers.set_timer(self.state, duration, handler)
     }
 
     pub fn exit(&self) {
