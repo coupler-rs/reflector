@@ -22,8 +22,8 @@ use crate::{App, AppContext, AppMode, AppOptions, Error, IntoInnerError, Result}
 pub struct AppState {
     pub class: *mut Class,
     pub empty_cursor: id,
+    pub timers: Timers,
     pub data: RefCell<Option<Box<dyn Any>>>,
-    pub timer_state: Timers,
 }
 
 impl Drop for AppState {
@@ -65,8 +65,8 @@ impl<T: 'static> AppInner<T> {
             let state = Rc::new(AppState {
                 class,
                 empty_cursor,
+                timers: Timers::new(),
                 data: RefCell::new(None),
-                timer_state: Timers::new(),
             });
 
             let cx = AppContext::from_inner(AppContextInner {
@@ -147,7 +147,7 @@ impl<'a, T: 'static> AppContextInner<'a, T> {
         H: 'static,
         H: FnMut(&mut T, &AppContext<T>),
     {
-        self.state.timer_state.set_timer(self.state, duration, handler)
+        self.state.timers.set_timer(self.state, duration, handler)
     }
 
     pub fn exit(&self) {
