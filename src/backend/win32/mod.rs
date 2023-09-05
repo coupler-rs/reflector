@@ -26,6 +26,20 @@ fn to_wstring<S: AsRef<OsStr> + ?Sized>(str: &S) -> Vec<ntdef::WCHAR> {
     wstr
 }
 
+fn class_name(prefix: &str) -> String {
+    use std::fmt::Write;
+
+    let mut bytes = [0u8; 16];
+    getrandom::getrandom(&mut bytes).unwrap();
+
+    let mut name = prefix.to_string();
+    for byte in bytes {
+        write!(&mut name, "{:x}", byte).unwrap();
+    }
+
+    name
+}
+
 #[derive(Debug)]
 pub struct OsError {
     code: minwindef::DWORD,

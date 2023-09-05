@@ -11,7 +11,7 @@ use winapi::{
 };
 
 use super::app::{AppContextInner, AppState};
-use super::{hinstance, to_wstring, OsError};
+use super::{class_name, hinstance, to_wstring, OsError};
 use crate::AppContext;
 use crate::{Error, Result};
 
@@ -64,7 +64,7 @@ pub struct Timers {
 
 impl Timers {
     pub fn new() -> Result<Timers> {
-        let class_name = to_wstring(&format!("timers-{}", uuid::Uuid::new_v4().to_simple()));
+        let class_name = to_wstring(&class_name("timers-"));
 
         let wnd_class = winuser::WNDCLASSW {
             style: 0,

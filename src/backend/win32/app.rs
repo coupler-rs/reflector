@@ -9,7 +9,7 @@ use winapi::{shared::minwindef, shared::ntdef, um::errhandlingapi, um::winuser};
 
 use super::timer::{TimerHandleInner, Timers};
 use super::window::wnd_proc;
-use super::{hinstance, to_wstring, OsError};
+use super::{class_name, hinstance, to_wstring, OsError};
 use crate::{App, AppContext, AppOptions, Error, IntoInnerError, Result};
 
 pub struct AppState {
@@ -37,9 +37,9 @@ impl<T: 'static> AppInner<T> {
         F: FnOnce(&AppContext<T>) -> Result<T>,
         T: 'static,
     {
-        let class = unsafe {
-            let class_name = to_wstring(&format!("window-{}", uuid::Uuid::new_v4().to_simple()));
+        let class_name = to_wstring(&class_name("window-"));
 
+        let class = unsafe {
             let wnd_class = winuser::WNDCLASSW {
                 style: winuser::CS_HREDRAW | winuser::CS_VREDRAW | winuser::CS_OWNDC,
                 lpfnWndProc: Some(wnd_proc),
