@@ -10,7 +10,7 @@ use std::{ptr, result};
 
 use xcb_sys as xcb;
 
-use super::timer::{TimerHandleInner, TimerState};
+use super::timer::{TimerHandleInner, Timers};
 use super::window::WindowState;
 use super::OsError;
 use crate::{
@@ -112,7 +112,7 @@ pub struct AppState {
     pub cursor_cache: RefCell<HashMap<Cursor, xcb::xcb_cursor_t>>,
     pub running: Cell<bool>,
     pub windows: RefCell<HashMap<xcb::xcb_window_t, Rc<WindowState>>>,
-    pub timer_state: TimerState,
+    pub timers: Timers,
 }
 
 impl Drop for AppState {
@@ -191,7 +191,7 @@ impl<T: 'static> AppInner<T> {
                 cursor_cache: RefCell::new(HashMap::new()),
                 running: Cell::new(false),
                 windows: RefCell::new(HashMap::new()),
-                timer_state: TimerState::new(),
+                timers: Timers::new(),
             })
         };
 
@@ -213,7 +213,7 @@ impl<T: 'static> AppInner<T> {
 
         while self.state.running.get() {
             self.drain_events();
-            self.state.timer_state.poll(&mut *self.data, &self.state);
+            self.state.timers.poll(&mut *self.data, &self.state);
             self.drain_events();
 
             if !self.state.running.get() {
@@ -226,7 +226,7 @@ impl<T: 'static> AppInner<T> {
                 revents: 0,
             }];
 
-            let timeout = if let Some(next_time) = self.state.timer_state.next_time() {
+            let timeout = if let Some(next_time) = self.state.timers.next_time() {
                 let duration = next_time.saturating_duration_since(Instant::now());
                 duration.as_millis() as i32
             } else {
@@ -243,7 +243,7 @@ impl<T: 'static> AppInner<T> {
 
     pub fn poll(&mut self) -> Result<()> {
         self.drain_events();
-        self.state.timer_state.poll(&mut *self.data, &self.state);
+        self.state.timers.poll(&mut *self.data, &self.state);
         self.drain_events();
 
         Ok(())
@@ -377,7 +377,7 @@ impl<'a, T: 'static> AppContextInner<'a, T> {
         H: 'static,
         H: FnMut(&mut T, &AppContext<T>),
     {
-        self.state.timer_state.set_timer(self.state, duration, handler)
+        self.state.timers.set_timer(self.state, duration, handler)
     }
 
     pub fn exit(&self) {

@@ -10,7 +10,7 @@ use crate::AppContext;
 
 pub type TimerId = usize;
 
-struct Timer {
+struct TimerState {
     duration: Duration,
     handler: RefCell<Box<dyn FnMut(&mut dyn Any, &Rc<AppState>)>>,
 }
@@ -41,15 +41,15 @@ impl Ord for QueueEntry {
     }
 }
 
-pub struct TimerState {
+pub struct Timers {
     next_id: Cell<TimerId>,
-    timers: RefCell<HashMap<usize, Rc<Timer>>>,
+    timers: RefCell<HashMap<usize, Rc<TimerState>>>,
     queue: RefCell<BinaryHeap<QueueEntry>>,
 }
 
-impl TimerState {
-    pub fn new() -> TimerState {
-        TimerState {
+impl Timers {
+    pub fn new() -> Timers {
+        Timers {
             next_id: Cell::new(0),
             timers: RefCell::new(HashMap::new()),
             queue: RefCell::new(BinaryHeap::new()),
@@ -85,7 +85,7 @@ impl TimerState {
 
         self.timers.borrow_mut().insert(
             timer_id,
-            Rc::new(Timer {
+            Rc::new(TimerState {
                 duration,
                 handler: RefCell::new(Box::new(handler_wrapper)),
             }),
@@ -133,7 +133,7 @@ pub struct TimerHandleInner {
 impl TimerHandleInner {
     pub fn cancel(self) {
         if let Some(app_state) = self.app_state.upgrade() {
-            app_state.timer_state.timers.borrow_mut().remove(&self.timer_id);
+            app_state.timers.timers.borrow_mut().remove(&self.timer_id);
         }
     }
 }
