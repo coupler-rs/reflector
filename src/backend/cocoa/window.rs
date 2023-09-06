@@ -382,8 +382,8 @@ impl WindowInner {
             let scale = view.backingScaleFactor();
 
             let surface = Surface::new(
-                (scale * options.size.width) as usize,
-                (scale * options.size.height) as usize,
+                (scale * options.size.width).round() as usize,
+                (scale * options.size.height).round() as usize,
             );
 
             view.setLayer(objc_retain(surface.layer.id()));

@@ -179,8 +179,8 @@ impl WindowInner {
 
             let shm_state = WindowState::init_shm(
                 &cx.inner.state,
-                options.size.width as usize,
-                options.size.height as usize,
+                options.size.width.round() as usize,
+                options.size.height.round() as usize,
             );
 
             xcb::xcb_flush(cx.inner.state.connection);
