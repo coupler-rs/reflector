@@ -128,15 +128,17 @@ impl WindowInner {
                 | xcb::XCB_EVENT_MASK_BUTTON_PRESS
                 | xcb::XCB_EVENT_MASK_BUTTON_RELEASE];
 
+            let position = options.position.unwrap_or(Point::new(0.0, 0.0));
+
             let cookie = xcb::xcb_create_window_checked(
                 cx.inner.state.connection,
                 xcb::XCB_COPY_FROM_PARENT as u8,
                 window_id,
                 parent_id,
-                options.rect.x as i16,
-                options.rect.y as i16,
-                options.rect.width as u16,
-                options.rect.height as u16,
+                position.x.round() as i16,
+                position.y.round() as i16,
+                options.size.width.round() as u16,
+                options.size.height.round() as u16,
                 0,
                 xcb::XCB_WINDOW_CLASS_INPUT_OUTPUT as u16,
                 xcb::XCB_COPY_FROM_PARENT,
@@ -177,8 +179,8 @@ impl WindowInner {
 
             let shm_state = WindowState::init_shm(
                 &cx.inner.state,
-                options.rect.width as usize,
-                options.rect.height as usize,
+                options.size.width as usize,
+                options.size.height as usize,
             );
 
             xcb::xcb_flush(cx.inner.state.connection);

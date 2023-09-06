@@ -90,11 +90,13 @@ impl WindowInner {
                     | winuser::WS_MAXIMIZEBOX;
             }
 
+            let position = options.position.unwrap_or(Point::new(0.0, 0.0));
+
             let mut rect = windef::RECT {
-                left: options.rect.x.round() as i32,
-                top: options.rect.y.round() as i32,
-                right: (options.rect.x + options.rect.width).round() as i32,
-                bottom: (options.rect.y + options.rect.height).round() as i32,
+                left: position.x.round() as i32,
+                top: position.y.round() as i32,
+                right: (position.x + options.size.width).round() as i32,
+                bottom: (position.y + options.size.height).round() as i32,
             };
             winuser::AdjustWindowRectEx(&mut rect, style, minwindef::FALSE, 0);
 
@@ -108,13 +110,19 @@ impl WindowInner {
                 ptr::null_mut()
             };
 
+            let (x, y) = if options.position.is_some() {
+                (rect.top, rect.left)
+            } else {
+                (winuser::CW_USEDEFAULT, winuser::CW_USEDEFAULT)
+            };
+
             let hwnd = winuser::CreateWindowExW(
                 0,
                 cx.inner.state.class as *const ntdef::WCHAR,
                 window_name.as_ptr(),
                 style,
-                winuser::CW_USEDEFAULT,
-                winuser::CW_USEDEFAULT,
+                x,
+                y,
                 rect.right - rect.left,
                 rect.bottom - rect.top,
                 parent,

@@ -134,7 +134,8 @@ pub enum RawParent {
 #[derive(Clone, Debug)]
 pub struct WindowOptions {
     pub(crate) title: String,
-    pub(crate) rect: Rect,
+    pub(crate) position: Option<Point>,
+    pub(crate) size: Size,
     pub(crate) parent: Option<RawParent>,
 }
 
@@ -142,12 +143,8 @@ impl Default for WindowOptions {
     fn default() -> Self {
         WindowOptions {
             title: String::new(),
-            rect: Rect {
-                x: 0.0,
-                y: 0.0,
-                width: 0.0,
-                height: 0.0,
-            },
+            position: None,
+            size: Size::new(0.0, 0.0),
             parent: None,
         }
     }
@@ -163,20 +160,13 @@ impl WindowOptions {
         self
     }
 
-    pub fn rect(&mut self, rect: Rect) -> &mut Self {
-        self.rect = rect;
-        self
-    }
-
-    pub fn position(&mut self, point: Point) -> &mut Self {
-        self.rect.x = point.x;
-        self.rect.y = point.y;
+    pub fn position(&mut self, position: Point) -> &mut Self {
+        self.position = Some(position);
         self
     }
 
     pub fn size(&mut self, size: Size) -> &mut Self {
-        self.rect.width = size.width;
-        self.rect.height = size.height;
+        self.size = size;
         self
     }
 

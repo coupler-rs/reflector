@@ -355,30 +355,35 @@ impl WindowInner {
         H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
         H: 'static,
     {
-        unsafe {
-            let rect = NSRect::new(
-                NSPoint::new(0.0, 0.0),
-                NSSize::new(options.rect.width, options.rect.height),
-            );
-
-            let parent_view = if let Some(parent) = options.parent {
-                if let RawParent::Cocoa(parent_view) = parent {
-                    Some(parent_view as id)
-                } else {
-                    return Err(Error::InvalidWindowHandle);
-                }
+        let parent_view = if let Some(parent) = options.parent {
+            if let RawParent::Cocoa(parent_view) = parent {
+                Some(parent_view as id)
             } else {
-                None
-            };
+                return Err(Error::InvalidWindowHandle);
+            }
+        } else {
+            None
+        };
 
+        let origin = if options.parent.is_some() {
+            Point::new(0.0, 0.0)
+        } else {
+            options.position.unwrap_or(Point::new(0.0, 0.0))
+        };
+        let frame = NSRect::new(
+            NSPoint::new(origin.x, origin.y),
+            NSSize::new(options.size.width, options.size.height),
+        );
+
+        unsafe {
             let view: id = msg_send![cx.inner.state.class, alloc];
-            let view = view.initWithFrame_(rect);
+            let view = view.initWithFrame_(frame);
 
             let scale = view.backingScaleFactor();
 
             let surface = Surface::new(
-                (scale * options.rect.width) as usize,
-                (scale * options.rect.height) as usize,
+                (scale * options.size.width) as usize,
+                (scale * options.size.height) as usize,
             );
 
             view.setLayer(objc_retain(surface.layer.id()));
@@ -441,13 +446,19 @@ impl WindowInner {
             }
 
             let window = if parent_view.is_none() {
+                let origin = options.position.unwrap_or(Point::new(0.0, 0.0));
+                let content_rect = NSRect::new(
+                    NSPoint::new(origin.x, origin.y),
+                    NSSize::new(options.size.width, options.size.height),
+                );
+
                 let style_mask = NSWindowStyleMask::NSTitledWindowMask
                     | NSWindowStyleMask::NSClosableWindowMask
                     | NSWindowStyleMask::NSMiniaturizableWindowMask
                     | NSWindowStyleMask::NSResizableWindowMask;
 
                 let window = NSWindow::alloc(nil).initWithContentRect_styleMask_backing_defer_(
-                    rect,
+                    content_rect,
                     style_mask,
                     NSBackingStoreBuffered,
                     NO,
@@ -459,7 +470,10 @@ impl WindowInner {
 
                 window.setDelegate_(view);
                 window.setContentView_(view);
-                window.center();
+
+                if options.position.is_none() {
+                    window.center();
+                }
 
                 Some(window)
             } else {
