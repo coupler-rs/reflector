@@ -224,7 +224,7 @@ impl WindowInner {
     }
 
     pub fn scale(&self) -> f64 {
-        unimplemented!()
+        self.state.app_state.scale
     }
 
     pub fn present(&self, bitmap: Bitmap) {

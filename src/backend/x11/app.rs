@@ -56,6 +56,7 @@ pub struct AppState {
     pub resources: resource_manager::Database,
     pub cursor_handle: cursor::Handle,
     pub cursor_cache: RefCell<HashMap<Cursor, xproto::Cursor>>,
+    pub scale: f64,
     pub running: Cell<bool>,
     pub windows: RefCell<HashMap<Window, Rc<WindowState>>>,
     pub timers: Timers,
@@ -87,6 +88,13 @@ impl<T: 'static> AppInner<T> {
         let resources = resource_manager::new_from_default(&connection)?;
         let cursor_handle = cursor::Handle::new(&connection, screen_index, &resources)?.reply()?;
 
+        let scale = if let Ok(Some(dpi)) = resources.get_value::<u32>("Xft.dpi", "") {
+            dbg!(dpi);
+            dpi as f64 / 96.0
+        } else {
+            1.0
+        };
+
         let state = Rc::new(AppState {
             connection,
             screen_index,
@@ -95,6 +103,7 @@ impl<T: 'static> AppInner<T> {
             resources,
             cursor_handle,
             cursor_cache: RefCell::new(HashMap::new()),
+            scale,
             running: Cell::new(false),
             windows: RefCell::new(HashMap::new()),
             timers: Timers::new(),
