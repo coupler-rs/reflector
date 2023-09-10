@@ -197,7 +197,6 @@ impl WindowInner {
         let state = Rc::new(WindowState {
             window_id,
             gc_id,
-
             shm_state: RefCell::new(shm_state),
             expose_rects: RefCell::new(Vec::new()),
             app_state: Rc::clone(&cx.inner.state),
@@ -220,7 +219,12 @@ impl WindowInner {
     }
 
     pub fn size(&self) -> Size {
-        unimplemented!()
+        self.size_inner().unwrap_or(Size::new(0.0, 0.0))
+    }
+
+    fn size_inner(&self) -> Result<Size> {
+        let geom = self.state.app_state.connection.get_geometry(self.state.window_id)?.reply()?;
+        Ok(Size::new(geom.width as f64, geom.height as f64))
     }
 
     pub fn scale(&self) -> f64 {
