@@ -12,10 +12,25 @@ winapi = { version = "0.3.8", features = ["std", "winuser", "windef", "minwindef
 getrandom = "0.2.10"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.4.1", features = ["catch-all"] }
+objc-sys = "0.3.1"
 core-foundation = "0.9.3"
-objc = { version = "0.2.7", features = ["exception"] }
-cocoa = "0.24.0"
 getrandom = "0.2.10"
+
+[target.'cfg(target_os = "macos")'.dependencies.icrate]
+version = "0.0.4"
+features = [
+    "AppKit",
+    "AppKit_NSView",
+    "AppKit_NSWindow",
+    "AppKit_NSScreen",
+    "AppKit_NSEvent",
+    "AppKit_NSImage",
+    "AppKit_NSCursor",
+    "AppKit_NSTrackingArea",
+    "CoreAnimation",
+    "CoreAnimation_CALayer",
+]
 
 [target.'cfg(target_os = "linux")'.dependencies]
 x11rb = { version = "0.12.0", features = ["shm", "cursor"] }

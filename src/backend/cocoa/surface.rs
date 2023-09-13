@@ -1,7 +1,9 @@
-use std::{ptr, slice};
+use std::{mem, ptr, slice};
 
-use cocoa::base::id;
-use cocoa::quartzcore::{CALayer, ContentsGravity, Filter};
+use objc2::msg_send;
+use objc2::rc::Id;
+
+use icrate::CoreAnimation::{kCAFilterNearest, kCAGravityTopLeft, CALayer};
 
 use core_foundation::base::{CFRelease, CFTypeRef, TCFType};
 use core_foundation::dictionary::CFDictionary;
@@ -12,8 +14,16 @@ use super::ffi::*;
 
 const BYTES_PER_ELEMENT: usize = 4;
 
+unsafe fn set_contents_opaque(layer: &CALayer, contents_opaque: bool) {
+    let () = msg_send![layer, setContentsOpaque: contents_opaque];
+}
+
+unsafe fn set_contents_changed(layer: &CALayer) {
+    let () = msg_send![layer, setContentsChanged];
+}
+
 pub struct Surface {
-    pub layer: CALayer,
+    pub layer: Id<CALayer>,
     pub surface: IOSurfaceRef,
     pub width: usize,
     pub height: usize,
@@ -49,12 +59,12 @@ impl Surface {
                 kCGColorSpaceSRGB as CFTypeRef,
             );
 
-            let layer = CALayer::new();
-            layer.set_contents(surface as id);
-            layer.set_opaque(true);
-            layer.set_contents_opaque(true);
-            layer.set_contents_gravity(ContentsGravity::TopLeft);
-            layer.set_magnification_filter(Filter::Nearest);
+            let layer = CALayer::layer();
+            layer.setContents(Some(mem::transmute(surface)));
+            layer.setOpaque(true);
+            set_contents_opaque(&layer, true);
+            layer.setContentsGravity(kCAGravityTopLeft);
+            layer.setMagnificationFilter(kCAFilterNearest);
 
             Surface {
                 layer,
@@ -76,6 +86,12 @@ impl Surface {
             f(buffer);
 
             IOSurfaceUnlock(self.surface, 0, ptr::null_mut());
+        }
+    }
+
+    pub fn present(&self) {
+        unsafe {
+            set_contents_changed(&self.layer);
         }
     }
 }

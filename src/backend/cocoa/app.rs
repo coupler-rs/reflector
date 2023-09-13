@@ -5,23 +5,20 @@ use std::rc::Rc;
 use std::result;
 use std::time::Duration;
 
-use objc::rc::autoreleasepool;
-use objc::runtime::{objc_release, Class};
-use objc::{msg_send, sel, sel_impl};
+use objc2::rc::{autoreleasepool, Id};
+use objc2::runtime::AnyClass;
+use objc2::ClassType;
 
-use cocoa::appkit::{
-    NSApp, NSApplication, NSApplicationActivationPolicyRegular, NSCursor, NSImage,
-};
-use cocoa::base::{id, nil, YES};
-use cocoa::foundation::{NSPoint, NSSize};
+use icrate::AppKit::{NSApplication, NSApplicationActivationPolicyRegular, NSCursor, NSImage};
+use icrate::Foundation::{NSPoint, NSSize};
 
 use super::timer::{TimerHandleInner, Timers};
-use super::window::{register_class, unregister_class};
+use super::window::View;
 use crate::{App, AppContext, AppMode, AppOptions, Error, IntoInnerError, Result};
 
 pub struct AppState {
-    pub class: *mut Class,
-    pub empty_cursor: id,
+    pub class: &'static AnyClass,
+    pub empty_cursor: Id<NSCursor>,
     pub timers: Timers,
     pub data: RefCell<Option<Box<dyn Any>>>,
 }
@@ -29,8 +26,7 @@ pub struct AppState {
 impl Drop for AppState {
     fn drop(&mut self) {
         unsafe {
-            objc_release(self.empty_cursor);
-            unregister_class(self.class);
+            View::unregister_class(self.class);
         }
     }
 }
@@ -46,18 +42,17 @@ impl<T: 'static> AppInner<T> {
         F: FnOnce(&AppContext<T>) -> Result<T>,
         T: 'static,
     {
-        autoreleasepool(|| {
-            let class = register_class()?;
+        autoreleasepool(|_| {
+            let class = View::register_class()?;
 
             let empty_cursor = unsafe {
                 let empty_cursor_image =
-                    NSImage::initWithSize_(NSImage::alloc(nil), NSSize::new(1.0, 1.0));
-                let empty_cursor: id = msg_send![
-                    NSCursor::alloc(nil),
-                    initWithImage: empty_cursor_image
-                    hotSpot: NSPoint::new(0.0, 0.0)
-                ];
-                objc_release(empty_cursor_image);
+                    NSImage::initWithSize(NSImage::alloc(), NSSize::new(1.0, 1.0));
+                let empty_cursor = NSCursor::initWithImage_hotSpot(
+                    NSCursor::alloc(),
+                    &empty_cursor_image,
+                    NSPoint::new(0.0, 0.0),
+                );
 
                 empty_cursor
             };
@@ -79,9 +74,9 @@ impl<T: 'static> AppInner<T> {
 
             if options.mode == AppMode::Owner {
                 unsafe {
-                    let app = NSApp();
-                    app.setActivationPolicy_(NSApplicationActivationPolicyRegular);
-                    app.activateIgnoringOtherApps_(YES);
+                    let app = NSApplication::sharedApplication();
+                    app.setActivationPolicy(NSApplicationActivationPolicyRegular);
+                    app.activateIgnoringOtherApps(true);
                 }
             }
 
@@ -93,9 +88,8 @@ impl<T: 'static> AppInner<T> {
     }
 
     pub fn run(&mut self) -> Result<()> {
-        autoreleasepool(|| unsafe {
-            let app = NSApp();
-            app.run();
+        autoreleasepool(|_| unsafe {
+            NSApplication::sharedApplication().run();
 
             Ok(())
         })
@@ -121,7 +115,7 @@ impl<T: 'static> AppInner<T> {
 
 impl<T> Drop for AppInner<T> {
     fn drop(&mut self) {
-        autoreleasepool(|| {
+        autoreleasepool(|_| {
             if let Ok(mut data) = self.state.data.try_borrow_mut() {
                 drop(data.take());
             }
@@ -152,7 +146,7 @@ impl<'a, T: 'static> AppContextInner<'a, T> {
 
     pub fn exit(&self) {
         unsafe {
-            NSApp().stop_(nil);
+            NSApplication::sharedApplication().stop(None);
         }
     }
 }
