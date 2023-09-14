@@ -5,7 +5,12 @@ use std::rc::Rc;
 use std::time::Duration;
 use std::{mem, ptr, result};
 
-use winapi::{shared::minwindef, shared::ntdef, um::errhandlingapi, um::winuser};
+use windows_sys::core::PCWSTR;
+use windows_sys::Win32::Foundation::GetLastError;
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    self as msg, DispatchMessageW, GetMessageW, LoadCursorW, PeekMessageW, PostQuitMessage,
+    RegisterClassW, TranslateMessage, UnregisterClassW, MSG, WNDCLASSW,
+};
 
 use super::timer::{TimerHandleInner, Timers};
 use super::window::wnd_proc;
@@ -13,7 +18,7 @@ use super::{class_name, hinstance, to_wstring, OsError};
 use crate::{App, AppContext, AppOptions, Error, IntoInnerError, Result};
 
 pub struct AppState {
-    pub class: minwindef::ATOM,
+    pub class: u16,
     pub timers: Timers,
     pub data: RefCell<Option<Box<dyn Any>>>,
 }
@@ -21,7 +26,7 @@ pub struct AppState {
 impl Drop for AppState {
     fn drop(&mut self) {
         unsafe {
-            winuser::UnregisterClassW(self.class as *const ntdef::WCHAR, hinstance());
+            UnregisterClassW(self.class as PCWSTR, hinstance());
         }
     }
 }
@@ -40,23 +45,23 @@ impl<T: 'static> AppInner<T> {
         let class_name = to_wstring(&class_name("window-"));
 
         let class = unsafe {
-            let wnd_class = winuser::WNDCLASSW {
-                style: winuser::CS_HREDRAW | winuser::CS_VREDRAW | winuser::CS_OWNDC,
+            let wnd_class = WNDCLASSW {
+                style: msg::CS_HREDRAW | msg::CS_VREDRAW | msg::CS_OWNDC,
                 lpfnWndProc: Some(wnd_proc),
                 cbClsExtra: 0,
                 cbWndExtra: 0,
                 hInstance: hinstance(),
-                hIcon: ptr::null_mut(),
-                hCursor: winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_ARROW),
-                hbrBackground: ptr::null_mut(),
+                hIcon: 0,
+                hCursor: LoadCursorW(0, msg::IDC_ARROW),
+                hbrBackground: 0,
                 lpszMenuName: ptr::null(),
                 lpszClassName: class_name.as_ptr(),
             };
 
-            let class = winuser::RegisterClassW(&wnd_class);
+            let class = RegisterClassW(&wnd_class);
             if class == 0 {
                 return Err(Error::Os(OsError {
-                    code: errhandlingapi::GetLastError(),
+                    code: GetLastError(),
                 }));
             }
 
@@ -94,19 +99,19 @@ impl<T: 'static> AppInner<T> {
 
         loop {
             unsafe {
-                let mut msg: winuser::MSG = mem::zeroed();
+                let mut msg: MSG = mem::zeroed();
 
-                let result = winuser::GetMessageW(&mut msg, ptr::null_mut(), 0, 0);
+                let result = GetMessageW(&mut msg, 0, 0, 0);
                 if result < 0 {
                     return Err(Error::Os(OsError {
-                        code: errhandlingapi::GetLastError(),
+                        code: GetLastError(),
                     }));
                 } else if result == 0 {
                     return Ok(());
                 }
 
-                winuser::TranslateMessage(&msg);
-                winuser::DispatchMessageW(&msg);
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
             }
         }
     }
@@ -118,16 +123,15 @@ impl<T: 'static> AppInner<T> {
 
         loop {
             unsafe {
-                let mut msg: winuser::MSG = mem::zeroed();
+                let mut msg: MSG = mem::zeroed();
 
-                let result =
-                    winuser::PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, winuser::PM_REMOVE);
+                let result = PeekMessageW(&mut msg, 0, 0, 0, msg::PM_REMOVE);
                 if result == 0 {
                     return Ok(());
                 }
 
-                winuser::TranslateMessage(&msg);
-                winuser::DispatchMessageW(&msg);
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
             }
         }
     }
@@ -177,7 +181,7 @@ impl<'a, T: 'static> AppContextInner<'a, T> {
 
     pub fn exit(&self) {
         unsafe {
-            winuser::PostQuitMessage(0);
+            PostQuitMessage(0);
         }
     }
 }

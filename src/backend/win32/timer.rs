@@ -5,9 +5,11 @@ use std::ptr;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
-use winapi::{
-    shared::basetsd, shared::minwindef, shared::ntdef, shared::windef, um::errhandlingapi,
-    um::winuser,
+use windows_sys::core::PCWSTR;
+use windows_sys::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, WPARAM};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    self as msg, CreateWindowExW, DefWindowProcW, DestroyWindow, GetWindowLongPtrW, KillTimer,
+    RegisterClassW, SetTimer, SetWindowLongPtrW, UnregisterClassW, WNDCLASSW,
 };
 
 use super::app::{AppContextInner, AppState};
@@ -16,19 +18,19 @@ use crate::AppContext;
 use crate::{Error, Result};
 
 pub unsafe extern "system" fn wnd_proc(
-    hwnd: windef::HWND,
-    msg: minwindef::UINT,
-    wparam: minwindef::WPARAM,
-    lparam: minwindef::LPARAM,
-) -> minwindef::LRESULT {
-    let app_state_ptr = winuser::GetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA) as *mut AppState;
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    let app_state_ptr = GetWindowLongPtrW(hwnd, msg::GWLP_USERDATA) as *mut AppState;
     if !app_state_ptr.is_null() {
         let app_state_weak = Weak::from_raw(app_state_ptr);
         let app_state = app_state_weak.clone();
         let _ = app_state_weak.into_raw();
 
         match msg {
-            winuser::WM_TIMER => {
+            msg::WM_TIMER => {
                 if let Some(app_state) = app_state.upgrade() {
                     let timer_state = app_state.timers.timers.borrow().get(&wparam).cloned();
                     if let Some(timer_state) = timer_state {
@@ -40,15 +42,15 @@ pub unsafe extern "system" fn wnd_proc(
                     }
                 }
             }
-            winuser::WM_DESTROY => {
+            msg::WM_DESTROY => {
                 drop(Weak::from_raw(app_state_ptr));
-                winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, 0);
+                SetWindowLongPtrW(hwnd, msg::GWLP_USERDATA, 0);
             }
             _ => {}
         }
     }
 
-    winuser::DefWindowProcW(hwnd, msg, wparam, lparam)
+    DefWindowProcW(hwnd, msg, wparam, lparam)
 }
 
 struct TimerState {
@@ -56,55 +58,55 @@ struct TimerState {
 }
 
 pub struct Timers {
-    class: minwindef::ATOM,
-    hwnd: windef::HWND,
-    next_id: Cell<basetsd::UINT_PTR>,
-    timers: RefCell<HashMap<basetsd::UINT_PTR, Rc<TimerState>>>,
+    class: u16,
+    hwnd: HWND,
+    next_id: Cell<usize>,
+    timers: RefCell<HashMap<usize, Rc<TimerState>>>,
 }
 
 impl Timers {
     pub fn new() -> Result<Timers> {
         let class_name = to_wstring(&class_name("timers-"));
 
-        let wnd_class = winuser::WNDCLASSW {
+        let wnd_class = WNDCLASSW {
             style: 0,
             lpfnWndProc: Some(wnd_proc),
             cbClsExtra: 0,
             cbWndExtra: 0,
             hInstance: hinstance(),
-            hIcon: ptr::null_mut(),
-            hCursor: ptr::null_mut(),
-            hbrBackground: ptr::null_mut(),
+            hIcon: 0,
+            hCursor: 0,
+            hbrBackground: 0,
             lpszMenuName: ptr::null(),
             lpszClassName: class_name.as_ptr(),
         };
 
-        let class = unsafe { winuser::RegisterClassW(&wnd_class) };
+        let class = unsafe { RegisterClassW(&wnd_class) };
         if class == 0 {
             return Err(Error::Os(OsError {
-                code: unsafe { errhandlingapi::GetLastError() },
+                code: unsafe { GetLastError() },
             }));
         }
 
         let hwnd = unsafe {
-            winuser::CreateWindowExW(
+            CreateWindowExW(
                 0,
-                class as *const ntdef::WCHAR,
+                class as PCWSTR,
                 ptr::null_mut(),
                 0,
-                winuser::CW_USEDEFAULT,
-                winuser::CW_USEDEFAULT,
+                msg::CW_USEDEFAULT,
+                msg::CW_USEDEFAULT,
                 0,
                 0,
-                ptr::null_mut(),
-                ptr::null_mut(),
+                0,
+                0,
                 hinstance(),
                 ptr::null_mut(),
             )
         };
-        if hwnd.is_null() {
+        if hwnd == 0 {
             return Err(Error::Os(OsError {
-                code: unsafe { errhandlingapi::GetLastError() },
+                code: unsafe { GetLastError() },
             }));
         }
 
@@ -120,7 +122,7 @@ impl Timers {
     pub fn set_app_state(&self, app_state: &Rc<AppState>) {
         let state_ptr = Weak::into_raw(Rc::downgrade(app_state));
         unsafe {
-            winuser::SetWindowLongPtrW(self.hwnd, winuser::GWLP_USERDATA, state_ptr as isize);
+            SetWindowLongPtrW(self.hwnd, msg::GWLP_USERDATA, state_ptr as isize);
         }
     }
 
@@ -153,8 +155,8 @@ impl Timers {
         );
 
         unsafe {
-            let millis = duration.as_millis() as minwindef::UINT;
-            winuser::SetTimer(self.hwnd, timer_id, millis, None);
+            let millis = duration.as_millis() as u32;
+            SetTimer(self.hwnd, timer_id, millis, None);
         }
 
         TimerHandleInner {
@@ -168,20 +170,20 @@ impl Drop for Timers {
     fn drop(&mut self) {
         for (timer_id, _timer) in self.timers.take() {
             unsafe {
-                winuser::KillTimer(self.hwnd, timer_id);
+                KillTimer(self.hwnd, timer_id);
             }
         }
 
         unsafe {
-            winuser::DestroyWindow(self.hwnd);
-            winuser::UnregisterClassW(self.class as *const ntdef::WCHAR, hinstance());
+            DestroyWindow(self.hwnd);
+            UnregisterClassW(self.class as PCWSTR, hinstance());
         }
     }
 }
 
 pub struct TimerHandleInner {
     app_state: Weak<AppState>,
-    timer_id: basetsd::UINT_PTR,
+    timer_id: usize,
 }
 
 impl TimerHandleInner {
@@ -189,7 +191,7 @@ impl TimerHandleInner {
         if let Some(app_state) = self.app_state.upgrade() {
             if let Some(_) = app_state.timers.timers.borrow_mut().remove(&self.timer_id) {
                 unsafe {
-                    winuser::KillTimer(app_state.timers.hwnd, self.timer_id);
+                    KillTimer(app_state.timers.hwnd, self.timer_id);
                 }
             }
         }

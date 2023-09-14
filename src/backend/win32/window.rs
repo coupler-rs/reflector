@@ -6,9 +6,15 @@ use std::mem::MaybeUninit;
 use std::rc::Rc;
 use std::{mem, ptr, slice};
 
-use winapi::{
-    shared::minwindef, shared::ntdef, shared::windef, shared::windowsx, um::errhandlingapi,
-    um::wingdi, um::winuser,
+use windows_sys::core::PCWSTR;
+use windows_sys::Win32::Foundation::{
+    GetLastError, FALSE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
+};
+use windows_sys::Win32::Graphics::Gdi::{self as gdi};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    self as msg, AdjustWindowRectEx, CreateWindowExW, DefWindowProcW, DestroyWindow,
+    GetWindowLongPtrW, LoadCursorW, SetCursor, SetCursorPos, SetWindowLongPtrW, ShowWindow,
 };
 
 use super::app::{AppContextInner, AppState};
@@ -17,6 +23,36 @@ use crate::{
     AppContext, Bitmap, Cursor, Error, Event, MouseButton, Point, RawParent, Rect, Response,
     Result, Size, WindowOptions,
 };
+
+#[allow(non_snake_case)]
+fn LOWORD(l: u32) -> u16 {
+    (l & 0xffff) as u16
+}
+
+#[allow(non_snake_case)]
+fn HIWORD(l: u32) -> u16 {
+    ((l >> 16) & 0xffff) as u16
+}
+
+#[allow(non_snake_case)]
+fn GET_X_LPARAM(lp: LPARAM) -> i16 {
+    LOWORD(lp as u32) as i16
+}
+
+#[allow(non_snake_case)]
+fn GET_Y_LPARAM(lp: LPARAM) -> i16 {
+    HIWORD(lp as u32) as i16
+}
+
+#[allow(non_snake_case)]
+fn GET_XBUTTON_WPARAM(wParam: WPARAM) -> u16 {
+    HIWORD(wParam as u32)
+}
+
+#[allow(non_snake_case)]
+fn GET_WHEEL_DELTA_WPARAM(wParam: WPARAM) -> i16 {
+    HIWORD(wParam as u32) as i16
+}
 
 struct WindowState {
     mouse_down_count: Cell<isize>,
@@ -29,20 +65,20 @@ impl WindowState {
     fn update_cursor(&self) {
         unsafe {
             let hcursor = match self.cursor.get() {
-                Cursor::Arrow => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_ARROW),
-                Cursor::Crosshair => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_CROSS),
-                Cursor::Hand => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_HAND),
-                Cursor::IBeam => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_IBEAM),
-                Cursor::No => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_NO),
-                Cursor::SizeNs => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_SIZENS),
-                Cursor::SizeWe => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_SIZEWE),
-                Cursor::SizeNesw => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_SIZENESW),
-                Cursor::SizeNwse => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_SIZENWSE),
-                Cursor::Wait => winuser::LoadCursorW(ptr::null_mut(), winuser::IDC_WAIT),
-                Cursor::None => ptr::null_mut(),
+                Cursor::Arrow => LoadCursorW(0, msg::IDC_ARROW),
+                Cursor::Crosshair => LoadCursorW(0, msg::IDC_CROSS),
+                Cursor::Hand => LoadCursorW(0, msg::IDC_HAND),
+                Cursor::IBeam => LoadCursorW(0, msg::IDC_IBEAM),
+                Cursor::No => LoadCursorW(0, msg::IDC_NO),
+                Cursor::SizeNs => LoadCursorW(0, msg::IDC_SIZENS),
+                Cursor::SizeWe => LoadCursorW(0, msg::IDC_SIZEWE),
+                Cursor::SizeNesw => LoadCursorW(0, msg::IDC_SIZENESW),
+                Cursor::SizeNwse => LoadCursorW(0, msg::IDC_SIZENWSE),
+                Cursor::Wait => LoadCursorW(0, msg::IDC_WAIT),
+                Cursor::None => 0,
             };
 
-            winuser::SetCursor(hcursor);
+            SetCursor(hcursor);
         }
     }
 
@@ -60,7 +96,7 @@ impl WindowState {
 }
 
 pub struct WindowInner {
-    hwnd: windef::HWND,
+    hwnd: HWND,
     state: Rc<WindowState>,
 }
 
@@ -78,47 +114,47 @@ impl WindowInner {
         unsafe {
             let window_name = to_wstring(&options.title);
 
-            let mut style = winuser::WS_CLIPCHILDREN | winuser::WS_CLIPSIBLINGS;
+            let mut style = msg::WS_CLIPCHILDREN | msg::WS_CLIPSIBLINGS;
 
             if options.parent.is_some() {
-                style |= winuser::WS_CHILD;
+                style |= msg::WS_CHILD;
             } else {
-                style |= winuser::WS_CAPTION
-                    | winuser::WS_SIZEBOX
-                    | winuser::WS_SYSMENU
-                    | winuser::WS_MINIMIZEBOX
-                    | winuser::WS_MAXIMIZEBOX;
+                style |= msg::WS_CAPTION
+                    | msg::WS_SIZEBOX
+                    | msg::WS_SYSMENU
+                    | msg::WS_MINIMIZEBOX
+                    | msg::WS_MAXIMIZEBOX;
             }
 
             let position = options.position.unwrap_or(Point::new(0.0, 0.0));
 
-            let mut rect = windef::RECT {
+            let mut rect = RECT {
                 left: position.x.round() as i32,
                 top: position.y.round() as i32,
                 right: (position.x + options.size.width).round() as i32,
                 bottom: (position.y + options.size.height).round() as i32,
             };
-            winuser::AdjustWindowRectEx(&mut rect, style, minwindef::FALSE, 0);
+            AdjustWindowRectEx(&mut rect, style, FALSE, 0);
 
             let parent = if let Some(parent) = options.parent {
                 if let RawParent::Win32(hwnd) = parent {
-                    hwnd as windef::HWND
+                    hwnd as HWND
                 } else {
                     return Err(Error::InvalidWindowHandle);
                 }
             } else {
-                ptr::null_mut()
+                0
             };
 
             let (x, y) = if options.position.is_some() {
                 (rect.top, rect.left)
             } else {
-                (winuser::CW_USEDEFAULT, winuser::CW_USEDEFAULT)
+                (msg::CW_USEDEFAULT, msg::CW_USEDEFAULT)
             };
 
-            let hwnd = winuser::CreateWindowExW(
+            let hwnd = CreateWindowExW(
                 0,
-                cx.inner.state.class as *const ntdef::WCHAR,
+                cx.inner.state.class as PCWSTR,
                 window_name.as_ptr(),
                 style,
                 x,
@@ -126,13 +162,13 @@ impl WindowInner {
                 rect.right - rect.left,
                 rect.bottom - rect.top,
                 parent,
-                ptr::null_mut(),
+                0,
                 hinstance(),
                 ptr::null_mut(),
             );
-            if hwnd.is_null() {
+            if hwnd == 0 {
                 return Err(Error::Os(OsError {
-                    code: errhandlingapi::GetLastError(),
+                    code: GetLastError(),
                 }));
             }
 
@@ -152,7 +188,7 @@ impl WindowInner {
             });
 
             let state_ptr = Rc::into_raw(Rc::clone(&state));
-            winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, state_ptr as isize);
+            SetWindowLongPtrW(hwnd, msg::GWLP_USERDATA, state_ptr as isize);
 
             Ok(WindowInner { hwnd, state })
         }
@@ -160,13 +196,13 @@ impl WindowInner {
 
     pub fn show(&self) {
         unsafe {
-            winuser::ShowWindow(self.hwnd, winuser::SW_SHOWNORMAL);
+            ShowWindow(self.hwnd, msg::SW_SHOWNORMAL);
         }
     }
 
     pub fn hide(&self) {
         unsafe {
-            winuser::ShowWindow(self.hwnd, winuser::SW_HIDE);
+            ShowWindow(self.hwnd, msg::SW_HIDE);
         }
     }
 
@@ -188,18 +224,18 @@ impl WindowInner {
 
     fn present_inner(&self, bitmap: Bitmap, rects: Option<&[Rect]>) {
         unsafe {
-            let hdc = winuser::GetDC(self.hwnd);
-            if !hdc.is_null() {
+            let hdc = gdi::GetDC(self.hwnd);
+            if hdc != 0 {
                 if let Some(rects) = rects {
-                    let (layout, _) = Layout::new::<wingdi::RGNDATAHEADER>()
-                        .extend(Layout::array::<windef::RECT>(rects.len()).unwrap())
+                    let (layout, _) = Layout::new::<gdi::RGNDATAHEADER>()
+                        .extend(Layout::array::<RECT>(rects.len()).unwrap())
                         .unwrap();
-                    let ptr = alloc(layout) as *mut wingdi::RGNDATA;
+                    let ptr = alloc(layout) as *mut gdi::RGNDATA;
 
-                    let buffer_ptr = ptr::addr_of!((*ptr).Buffer) as *mut MaybeUninit<windef::RECT>;
+                    let buffer_ptr = ptr::addr_of!((*ptr).Buffer) as *mut MaybeUninit<RECT>;
                     let buffer = slice::from_raw_parts_mut(buffer_ptr, rects.len());
                     for (src, dst) in rects.iter().zip(buffer.iter_mut()) {
-                        dst.write(windef::RECT {
+                        dst.write(RECT {
                             left: src.x.round() as i32,
                             top: src.y.round() as i32,
                             right: (src.x + src.width).round() as i32,
@@ -207,10 +243,9 @@ impl WindowInner {
                         });
                     }
 
-                    let buffer =
-                        slice::from_raw_parts(buffer_ptr as *const windef::RECT, rects.len());
+                    let buffer = slice::from_raw_parts(buffer_ptr as *const RECT, rects.len());
                     let bounds = if buffer.is_empty() {
-                        windef::RECT {
+                        RECT {
                             left: 0,
                             top: 0,
                             right: 0,
@@ -227,35 +262,35 @@ impl WindowInner {
                         bounds
                     };
 
-                    (*ptr).rdh = wingdi::RGNDATAHEADER {
-                        dwSize: mem::size_of::<wingdi::RGNDATAHEADER>() as u32,
-                        iType: wingdi::RDH_RECTANGLES,
+                    (*ptr).rdh = gdi::RGNDATAHEADER {
+                        dwSize: mem::size_of::<gdi::RGNDATAHEADER>() as u32,
+                        iType: gdi::RDH_RECTANGLES,
                         nCount: rects.len() as u32,
                         nRgnSize: layout.size() as u32,
                         rcBound: bounds,
                     };
 
-                    let rgn = wingdi::ExtCreateRegion(ptr::null(), layout.size() as u32, ptr);
-                    wingdi::SelectClipRgn(hdc, rgn);
-                    wingdi::DeleteObject(rgn as *mut c_void);
+                    let rgn = gdi::ExtCreateRegion(ptr::null(), layout.size() as u32, ptr);
+                    gdi::SelectClipRgn(hdc, rgn);
+                    gdi::DeleteObject(rgn as gdi::HGDIOBJ);
 
                     dealloc(ptr as *mut u8, layout);
                 }
 
-                let bitmap_info = wingdi::BITMAPINFO {
-                    bmiHeader: wingdi::BITMAPINFOHEADER {
-                        biSize: mem::size_of::<wingdi::BITMAPINFOHEADER>() as u32,
+                let bitmap_info = gdi::BITMAPINFO {
+                    bmiHeader: gdi::BITMAPINFOHEADER {
+                        biSize: mem::size_of::<gdi::BITMAPINFOHEADER>() as u32,
                         biWidth: bitmap.width() as i32,
                         biHeight: -(bitmap.height() as i32),
                         biPlanes: 1,
                         biBitCount: 32,
-                        biCompression: wingdi::BI_RGB,
+                        biCompression: gdi::BI_RGB as u32,
                         ..mem::zeroed()
                     },
                     ..mem::zeroed()
                 };
 
-                wingdi::StretchDIBits(
+                gdi::StretchDIBits(
                     hdc,
                     0,
                     0,
@@ -265,17 +300,17 @@ impl WindowInner {
                     0,
                     bitmap.width() as i32,
                     bitmap.height() as i32,
-                    bitmap.data().as_ptr() as *const ntdef::VOID,
+                    bitmap.data().as_ptr() as *const c_void,
                     &bitmap_info,
-                    wingdi::DIB_RGB_COLORS,
-                    wingdi::SRCCOPY,
+                    gdi::DIB_RGB_COLORS,
+                    gdi::SRCCOPY,
                 );
 
                 if rects.is_some() {
-                    wingdi::SelectClipRgn(hdc, ptr::null_mut());
+                    gdi::SelectClipRgn(hdc, 0);
                 }
 
-                winuser::ReleaseDC(self.hwnd, hdc);
+                gdi::ReleaseDC(self.hwnd, hdc);
             }
         }
     }
@@ -287,12 +322,12 @@ impl WindowInner {
 
     pub fn set_mouse_position(&self, position: Point) {
         unsafe {
-            let mut point = windef::POINT {
+            let mut point = POINT {
                 x: position.x as c_int,
                 y: position.y as c_int,
             };
-            winuser::ClientToScreen(self.hwnd, &mut point);
-            winuser::SetCursorPos(point.x, point.y);
+            gdi::ClientToScreen(self.hwnd, &mut point);
+            SetCursorPos(point.x, point.y);
         }
     }
 }
@@ -300,18 +335,18 @@ impl WindowInner {
 impl Drop for WindowInner {
     fn drop(&mut self) {
         unsafe {
-            winuser::DestroyWindow(self.hwnd);
+            DestroyWindow(self.hwnd);
         }
     }
 }
 
 pub unsafe extern "system" fn wnd_proc(
-    hwnd: windef::HWND,
-    msg: minwindef::UINT,
-    wparam: minwindef::WPARAM,
-    lparam: minwindef::LPARAM,
-) -> minwindef::LRESULT {
-    let state_ptr = winuser::GetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA) as *const WindowState;
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    let state_ptr = GetWindowLongPtrW(hwnd, msg::GWLP_USERDATA) as *const WindowState;
     if !state_ptr.is_null() {
         // Hold a reference to the WindowState for the duration of the wnd_proc, in case the
         // window is closed during an event handler
@@ -320,33 +355,31 @@ pub unsafe extern "system" fn wnd_proc(
         let _ = Rc::into_raw(state_rc);
 
         match msg {
-            winuser::WM_SETCURSOR => {
-                if minwindef::LOWORD(lparam as minwindef::DWORD)
-                    == winuser::HTCLIENT as minwindef::WORD
-                {
+            msg::WM_SETCURSOR => {
+                if LOWORD(lparam as u32) == msg::HTCLIENT as u16 {
                     state.update_cursor();
                     return 0;
                 }
             }
-            winuser::WM_ERASEBKGND => {
+            msg::WM_ERASEBKGND => {
                 return 1;
             }
-            winuser::WM_PAINT => {
+            msg::WM_PAINT => {
                 let mut rects = Vec::new();
 
-                let rgn = wingdi::CreateRectRgn(0, 0, 0, 0);
-                winuser::GetUpdateRgn(hwnd, rgn, 0);
-                let size = wingdi::GetRegionData(rgn, 0, ptr::null_mut());
+                let rgn = gdi::CreateRectRgn(0, 0, 0, 0);
+                gdi::GetUpdateRgn(hwnd, rgn, 0);
+                let size = gdi::GetRegionData(rgn, 0, ptr::null_mut());
                 if size != 0 {
-                    let align = mem::align_of::<wingdi::RGNDATA>();
+                    let align = mem::align_of::<gdi::RGNDATA>();
                     let layout = Layout::from_size_align(size as usize, align).unwrap();
-                    let ptr = alloc(layout) as *mut wingdi::RGNDATA;
+                    let ptr = alloc(layout) as *mut gdi::RGNDATA;
 
-                    let result = wingdi::GetRegionData(rgn, size, ptr);
+                    let result = gdi::GetRegionData(rgn, size, ptr);
                     if result == size {
                         let count = (*ptr).rdh.nCount as usize;
 
-                        let buffer_ptr = ptr::addr_of!((*ptr).Buffer) as *const windef::RECT;
+                        let buffer_ptr = ptr::addr_of!((*ptr).Buffer) as *const RECT;
                         let buffer = slice::from_raw_parts(buffer_ptr, count);
 
                         rects.reserve_exact(count);
@@ -362,58 +395,56 @@ pub unsafe extern "system" fn wnd_proc(
 
                     dealloc(ptr as *mut u8, layout);
                 }
-                wingdi::DeleteObject(rgn as *mut c_void);
+                gdi::DeleteObject(rgn as gdi::HGDIOBJ);
 
                 // Only validate the dirty region if we successfully invoked the event handler.
                 // This ensures that if we receive an expose event during the App::new builder
                 // callback, we will receive it again later.
                 if state.handle_event(Event::Expose(&rects)).is_some() {
-                    winuser::ValidateRgn(hwnd, ptr::null_mut());
+                    gdi::ValidateRgn(hwnd, 0);
                 }
 
                 return 0;
             }
-            winuser::WM_MOUSEMOVE => {
+            msg::WM_MOUSEMOVE => {
                 let point = Point {
-                    x: windowsx::GET_X_LPARAM(lparam) as f64,
-                    y: windowsx::GET_Y_LPARAM(lparam) as f64,
+                    x: GET_X_LPARAM(lparam) as f64,
+                    y: GET_Y_LPARAM(lparam) as f64,
                 };
                 state.handle_event(Event::MouseMove(point));
 
                 return 0;
             }
-            winuser::WM_LBUTTONDOWN
-            | winuser::WM_LBUTTONUP
-            | winuser::WM_MBUTTONDOWN
-            | winuser::WM_MBUTTONUP
-            | winuser::WM_RBUTTONDOWN
-            | winuser::WM_RBUTTONUP
-            | winuser::WM_XBUTTONDOWN
-            | winuser::WM_XBUTTONUP => {
+            msg::WM_LBUTTONDOWN
+            | msg::WM_LBUTTONUP
+            | msg::WM_MBUTTONDOWN
+            | msg::WM_MBUTTONUP
+            | msg::WM_RBUTTONDOWN
+            | msg::WM_RBUTTONUP
+            | msg::WM_XBUTTONDOWN
+            | msg::WM_XBUTTONUP => {
                 let button = match msg {
-                    winuser::WM_LBUTTONDOWN | winuser::WM_LBUTTONUP => Some(MouseButton::Left),
-                    winuser::WM_MBUTTONDOWN | winuser::WM_MBUTTONUP => Some(MouseButton::Middle),
-                    winuser::WM_RBUTTONDOWN | winuser::WM_RBUTTONUP => Some(MouseButton::Right),
-                    winuser::WM_XBUTTONDOWN | winuser::WM_XBUTTONUP => {
-                        match winuser::GET_XBUTTON_WPARAM(wparam) {
-                            winuser::XBUTTON1 => Some(MouseButton::Back),
-                            winuser::XBUTTON2 => Some(MouseButton::Forward),
-                            _ => None,
-                        }
-                    }
+                    msg::WM_LBUTTONDOWN | msg::WM_LBUTTONUP => Some(MouseButton::Left),
+                    msg::WM_MBUTTONDOWN | msg::WM_MBUTTONUP => Some(MouseButton::Middle),
+                    msg::WM_RBUTTONDOWN | msg::WM_RBUTTONUP => Some(MouseButton::Right),
+                    msg::WM_XBUTTONDOWN | msg::WM_XBUTTONUP => match GET_XBUTTON_WPARAM(wparam) {
+                        msg::XBUTTON1 => Some(MouseButton::Back),
+                        msg::XBUTTON2 => Some(MouseButton::Forward),
+                        _ => None,
+                    },
                     _ => None,
                 };
 
                 if let Some(button) = button {
                     let event = match msg {
-                        winuser::WM_LBUTTONDOWN
-                        | winuser::WM_MBUTTONDOWN
-                        | winuser::WM_RBUTTONDOWN
-                        | winuser::WM_XBUTTONDOWN => Some(Event::MouseDown(button)),
-                        winuser::WM_LBUTTONUP
-                        | winuser::WM_MBUTTONUP
-                        | winuser::WM_RBUTTONUP
-                        | winuser::WM_XBUTTONUP => Some(Event::MouseUp(button)),
+                        msg::WM_LBUTTONDOWN
+                        | msg::WM_MBUTTONDOWN
+                        | msg::WM_RBUTTONDOWN
+                        | msg::WM_XBUTTONDOWN => Some(Event::MouseDown(button)),
+                        msg::WM_LBUTTONUP
+                        | msg::WM_MBUTTONUP
+                        | msg::WM_RBUTTONUP
+                        | msg::WM_XBUTTONUP => Some(Event::MouseUp(button)),
                         _ => None,
                     };
 
@@ -422,13 +453,13 @@ pub unsafe extern "system" fn wnd_proc(
                             Event::MouseDown(_) => {
                                 state.mouse_down_count.set(state.mouse_down_count.get() + 1);
                                 if state.mouse_down_count.get() == 1 {
-                                    winuser::SetCapture(hwnd);
+                                    SetCapture(hwnd);
                                 }
                             }
                             Event::MouseUp(_) => {
                                 state.mouse_down_count.set(state.mouse_down_count.get() - 1);
                                 if state.mouse_down_count.get() == 0 {
-                                    winuser::ReleaseCapture();
+                                    ReleaseCapture();
                                 }
                             }
                             _ => {}
@@ -440,11 +471,11 @@ pub unsafe extern "system" fn wnd_proc(
                     }
                 }
             }
-            winuser::WM_MOUSEWHEEL | winuser::WM_MOUSEHWHEEL => {
-                let delta = winuser::GET_WHEEL_DELTA_WPARAM(wparam) as f64 / 120.0;
+            msg::WM_MOUSEWHEEL | msg::WM_MOUSEHWHEEL => {
+                let delta = GET_WHEEL_DELTA_WPARAM(wparam) as f64 / 120.0;
                 let point = match msg {
-                    winuser::WM_MOUSEWHEEL => Point::new(0.0, delta),
-                    winuser::WM_MOUSEHWHEEL => Point::new(delta, 0.0),
+                    msg::WM_MOUSEWHEEL => Point::new(0.0, delta),
+                    msg::WM_MOUSEHWHEEL => Point::new(delta, 0.0),
                     _ => unreachable!(),
                 };
 
@@ -452,17 +483,17 @@ pub unsafe extern "system" fn wnd_proc(
                     return 0;
                 }
             }
-            winuser::WM_CLOSE => {
+            msg::WM_CLOSE => {
                 state.handle_event(Event::Close);
                 return 0;
             }
-            winuser::WM_DESTROY => {
+            msg::WM_DESTROY => {
                 drop(Rc::from_raw(state_ptr));
-                winuser::SetWindowLongPtrW(hwnd, winuser::GWLP_USERDATA, 0);
+                SetWindowLongPtrW(hwnd, msg::GWLP_USERDATA, 0);
             }
             _ => {}
         }
     }
 
-    winuser::DefWindowProcW(hwnd, msg, wparam, lparam)
+    DefWindowProcW(hwnd, msg, wparam, lparam)
 }
