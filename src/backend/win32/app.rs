@@ -12,6 +12,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     RegisterClassW, TranslateMessage, UnregisterClassW, MSG, WNDCLASSW,
 };
 
+use super::dpi::DpiFns;
 use super::timer::{TimerHandleInner, Timers};
 use super::window::wnd_proc;
 use super::{class_name, hinstance, to_wstring, OsError};
@@ -19,6 +20,7 @@ use crate::{App, AppContext, AppOptions, Error, IntoInnerError, Result};
 
 pub struct AppState {
     pub class: u16,
+    pub dpi: DpiFns,
     pub timers: Timers,
     pub data: RefCell<Option<Box<dyn Any>>>,
 }
@@ -68,10 +70,13 @@ impl<T: 'static> AppInner<T> {
             class
         };
 
+        let dpi = DpiFns::load();
+
         let timers = Timers::new()?;
 
         let state = Rc::new(AppState {
             class,
+            dpi,
             timers,
             data: RefCell::new(None),
         });

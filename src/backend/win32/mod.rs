@@ -6,6 +6,7 @@ use windows_sys::Win32::Foundation::{HMODULE, WIN32_ERROR};
 use windows_sys::Win32::System::SystemServices::IMAGE_DOS_HEADER;
 
 mod app;
+mod dpi;
 mod timer;
 mod window;
 
