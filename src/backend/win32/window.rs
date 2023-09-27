@@ -211,7 +211,9 @@ impl WindowInner {
     }
 
     pub fn scale(&self) -> f64 {
-        unimplemented!()
+        let dpi = unsafe { self.state.app_state.dpi.dpi_for_window(self.hwnd) };
+
+        dpi as f64 / msg::USER_DEFAULT_SCREEN_DPI as f64
     }
 
     pub fn present(&self, bitmap: Bitmap) {

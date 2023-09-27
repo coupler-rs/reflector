@@ -1,15 +1,20 @@
 use std::mem;
 
 use windows_sys::core::HRESULT;
-use windows_sys::Win32::Foundation::{BOOL, FALSE, HWND, RECT};
-use windows_sys::Win32::Graphics::Gdi::HMONITOR;
+use windows_sys::Win32::Foundation::{BOOL, FALSE, HWND, RECT, S_OK, TRUE};
+use windows_sys::Win32::Graphics::Gdi::{
+    GetDC, GetDeviceCaps, MonitorFromWindow, ReleaseDC, HMONITOR, LOGPIXELSX,
+    MONITOR_DEFAULTTONEAREST,
+};
 use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
 use windows_sys::Win32::UI::HiDpi::{
     DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE,
-    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, MONITOR_DPI_TYPE, PROCESS_DPI_AWARENESS,
-    PROCESS_PER_MONITOR_DPI_AWARE,
+    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, MDT_EFFECTIVE_DPI, MONITOR_DPI_TYPE,
+    PROCESS_DPI_AWARENESS, PROCESS_PER_MONITOR_DPI_AWARE,
 };
-use windows_sys::Win32::UI::WindowsAndMessaging::{WINDOW_EX_STYLE, WINDOW_STYLE};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    USER_DEFAULT_SCREEN_DPI, WINDOW_EX_STYLE, WINDOW_STYLE,
+};
 
 macro_rules! c_str {
     ($str:literal) => {
@@ -20,6 +25,7 @@ macro_rules! c_str {
 #[allow(non_snake_case)]
 pub struct DpiFns {
     pub SetProcessDPIAware: Option<unsafe extern "system" fn() -> BOOL>,
+    pub IsProcessDPIAware: Option<unsafe extern "system" fn() -> BOOL>,
     pub SetProcessDpiAwareness:
         Option<unsafe extern "system" fn(value: PROCESS_DPI_AWARENESS) -> HRESULT>,
     pub SetProcessDpiAwarenessContext:
@@ -63,6 +69,7 @@ impl DpiFns {
 
             DpiFns {
                 SetProcessDPIAware: load!(user32, "SetProcessDPIAware"),
+                IsProcessDPIAware: load!(user32, "IsProcessDPIAware"),
                 SetProcessDpiAwareness: load!(shcore, "SetProcessDpiAwareness"),
                 SetProcessDpiAwarenessContext: load!(user32, "SetProcessDpiAwarenessContext"),
                 GetDpiForMonitor: load!(shcore, "GetDpiForMonitor"),
@@ -86,6 +93,50 @@ impl DpiFns {
                 SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
             } else if let Some(SetProcessDPIAware) = self.SetProcessDPIAware {
                 SetProcessDPIAware();
+            }
+        }
+    }
+
+    pub unsafe fn dpi_for_window(&self, hwnd: HWND) -> u32 {
+        #[allow(non_snake_case)]
+        unsafe {
+            if let Some(GetDpiForWindow) = self.GetDpiForWindow {
+                let dpi = GetDpiForWindow(hwnd);
+                if dpi == 0 {
+                    return USER_DEFAULT_SCREEN_DPI;
+                }
+
+                dpi
+            } else if let Some(GetDpiForMonitor) = self.GetDpiForMonitor {
+                let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                if monitor == 0 {
+                    return USER_DEFAULT_SCREEN_DPI;
+                }
+
+                let mut dpi_x = 0;
+                let mut dpi_y = 0;
+                let res = GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y);
+                if res != S_OK {
+                    return USER_DEFAULT_SCREEN_DPI;
+                }
+
+                dpi_x
+            } else if let Some(IsProcessDPIAware) = self.IsProcessDPIAware {
+                if IsProcessDPIAware() == TRUE {
+                    let hdc = GetDC(hwnd);
+                    if hdc == 0 {
+                        return USER_DEFAULT_SCREEN_DPI;
+                    }
+
+                    let dpi = GetDeviceCaps(hdc, LOGPIXELSX) as u32;
+                    ReleaseDC(hwnd, hdc);
+
+                    dpi
+                } else {
+                    USER_DEFAULT_SCREEN_DPI
+                }
+            } else {
+                USER_DEFAULT_SCREEN_DPI
             }
         }
     }
