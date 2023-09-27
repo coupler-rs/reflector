@@ -15,6 +15,11 @@ impl Point {
     pub fn new(x: f64, y: f64) -> Point {
         Point { x, y }
     }
+
+    #[inline]
+    pub fn scale(self, scale: f64) -> Point {
+        Point::new(self.x * scale, self.y * scale)
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -27,6 +32,11 @@ impl Size {
     #[inline]
     pub fn new(width: f64, height: f64) -> Size {
         Size { width, height }
+    }
+
+    #[inline]
+    pub fn scale(self, scale: f64) -> Size {
+        Size::new(self.width * scale, self.height * scale)
     }
 }
 
