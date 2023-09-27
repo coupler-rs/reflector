@@ -16,7 +16,7 @@ use super::dpi::DpiFns;
 use super::timer::{TimerHandleInner, Timers};
 use super::window::wnd_proc;
 use super::{class_name, hinstance, to_wstring, OsError};
-use crate::{App, AppContext, AppOptions, Error, IntoInnerError, Result};
+use crate::{App, AppContext, AppMode, AppOptions, Error, IntoInnerError, Result};
 
 pub struct AppState {
     pub class: u16,
@@ -39,7 +39,7 @@ pub struct AppInner<T> {
 }
 
 impl<T: 'static> AppInner<T> {
-    pub fn new<F>(_options: &AppOptions, build: F) -> Result<AppInner<T>>
+    pub fn new<F>(options: &AppOptions, build: F) -> Result<AppInner<T>>
     where
         F: FnOnce(&AppContext<T>) -> Result<T>,
         T: 'static,
@@ -71,6 +71,9 @@ impl<T: 'static> AppInner<T> {
         };
 
         let dpi = DpiFns::load();
+        if options.mode == AppMode::Owner {
+            dpi.set_dpi_aware();
+        }
 
         let timers = Timers::new()?;
 

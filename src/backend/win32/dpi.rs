@@ -1,11 +1,13 @@
 use std::mem;
 
 use windows_sys::core::HRESULT;
-use windows_sys::Win32::Foundation::{BOOL, HWND, RECT};
+use windows_sys::Win32::Foundation::{BOOL, FALSE, HWND, RECT};
 use windows_sys::Win32::Graphics::Gdi::HMONITOR;
 use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
 use windows_sys::Win32::UI::HiDpi::{
-    DPI_AWARENESS_CONTEXT, MONITOR_DPI_TYPE, PROCESS_DPI_AWARENESS,
+    DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE,
+    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, MONITOR_DPI_TYPE, PROCESS_DPI_AWARENESS,
+    PROCESS_PER_MONITOR_DPI_AWARE,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{WINDOW_EX_STYLE, WINDOW_STYLE};
 
@@ -67,6 +69,23 @@ impl DpiFns {
                 GetDpiForWindow: load!(user32, "GetDpiForWindow"),
                 EnableNonClientDpiScaling: load!(user32, "EnableNonClientDpiScaling"),
                 AdjustWindowRectExForDpi: load!(user32, "AdjustWindowRectExForDpi"),
+            }
+        }
+    }
+
+    pub fn set_dpi_aware(&self) {
+        #[allow(non_snake_case)]
+        unsafe {
+            if let Some(SetProcessDpiAwarenessContext) = self.SetProcessDpiAwarenessContext {
+                let res = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
+                if res == FALSE {
+                    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
+                }
+            } else if let Some(SetProcessDpiAwareness) = self.SetProcessDpiAwareness {
+                SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+            } else if let Some(SetProcessDPIAware) = self.SetProcessDPIAware {
+                SetProcessDPIAware();
             }
         }
     }
