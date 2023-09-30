@@ -10,7 +10,7 @@ use core_foundation::dictionary::CFDictionary;
 use core_foundation::number::CFNumber;
 use core_foundation::string::CFString;
 
-use super::ffi::*;
+use super::ffi::io_surface::*;
 
 const BYTES_PER_ELEMENT: usize = 4;
 
