@@ -579,6 +579,8 @@ impl Drop for WindowInner {
         unsafe {
             if let Some(window) = &self.window {
                 window.close();
+            } else {
+                self.view.removeFromSuperview();
             }
         }
     }
