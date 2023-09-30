@@ -5,6 +5,8 @@
 
 use std::ffi::c_void;
 
+use super::Boolean;
+
 #[repr(C)]
 pub struct __CVDisplayLink(c_void);
 
@@ -68,5 +70,6 @@ extern "C" {
     ) -> CVReturn;
     pub fn CVDisplayLinkStart(displayLink: CVDisplayLinkRef) -> CVReturn;
     pub fn CVDisplayLinkStop(displayLink: CVDisplayLinkRef) -> CVReturn;
+    pub fn CVDisplayLinkIsRunning(displayLink: CVDisplayLinkRef) -> Boolean;
     pub fn CVDisplayLinkRelease(displayLink: CVDisplayLinkRef);
 }

@@ -2,11 +2,13 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 
-use std::ffi::{c_int, c_uchar, c_void};
+use std::ffi::{c_int, c_void};
 
 use core_foundation::base::CFTypeRef;
 use core_foundation::dictionary::CFDictionaryRef;
 use core_foundation::string::CFStringRef;
+
+use super::Boolean;
 
 #[repr(C)]
 pub struct __IOSurface(c_void);
@@ -14,7 +16,6 @@ pub struct __IOSurface(c_void);
 pub type IOSurfaceRef = *const __IOSurface;
 
 pub type kern_return_t = c_int;
-pub type Boolean = c_uchar;
 
 pub type IOSurfaceLockOptions = u32;
 
