@@ -10,7 +10,7 @@ use objc2::runtime::AnyClass;
 use objc2::ClassType;
 
 use icrate::AppKit::{NSApplication, NSApplicationActivationPolicyRegular, NSCursor, NSImage};
-use icrate::Foundation::{NSPoint, NSSize};
+use icrate::Foundation::{NSPoint, NSSize, NSThread};
 
 use super::timer::{TimerHandleInner, Timers};
 use super::window::View;
@@ -43,6 +43,11 @@ impl<T: 'static> AppInner<T> {
         T: 'static,
     {
         autoreleasepool(|_| {
+            assert!(
+                NSThread::isMainThread_class(),
+                "App must be created on the main thread"
+            );
+
             let class = View::register_class()?;
 
             let empty_cursor = unsafe {
