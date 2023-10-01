@@ -52,7 +52,7 @@ fn mouse_button_from_number(button_number: NSInteger) -> Option<MouseButton> {
 struct StateIvar;
 
 unsafe impl IvarType for StateIvar {
-    type Type = IvarEncode<Cell<*const c_void>>;
+    type Type = IvarEncode<Cell<*mut c_void>>;
     const NAME: &'static str = "windowState";
 }
 
@@ -162,6 +162,19 @@ impl View {
         objc_disposeClassPair(class as *const _ as *mut objc_class);
     }
 
+    fn state(&self) -> &WindowState {
+        unsafe { &*(self.state.get() as *const WindowState) }
+    }
+
+    fn new(state: Box<WindowState>, frame: NSRect) -> Id<View> {
+        let view: Option<Allocated<View>> = unsafe { msg_send_id![state.app_state.class, alloc] };
+        let view: Id<View> = unsafe { msg_send_id![view, initWithFrame: frame] };
+
+        view.state.set(Box::into_raw(state) as *mut c_void);
+
+        view
+    }
+
     unsafe extern "C" fn accepts_first_mouse(&self, _: Sel, _event: Option<&NSEvent>) -> Bool {
         Bool::YES
     }
@@ -171,21 +184,17 @@ impl View {
     }
 
     unsafe extern "C" fn mouse_moved(&self, _: Sel, event: Option<&NSEvent>) {
-        let state = WindowState::from_view(self);
-
         let Some(event) = event else { return; };
 
         let point = self.convertPoint_fromView(event.locationInWindow(), None);
-        state.handle_event(Event::MouseMove(Point {
+        self.state().handle_event(Event::MouseMove(Point {
             x: point.x,
             y: point.y,
         }));
     }
 
     unsafe extern "C" fn mouse_down(&self, _: Sel, event: Option<&NSEvent>) {
-        let state = WindowState::from_view(self);
-
-        let result = state.handle_event(Event::MouseDown(MouseButton::Left));
+        let result = self.state().handle_event(Event::MouseDown(MouseButton::Left));
 
         if result != Some(Response::Capture) {
             let () = msg_send![super(self, NSView::class()), mouseDown: event];
@@ -193,9 +202,7 @@ impl View {
     }
 
     unsafe extern "C" fn mouse_up(&self, _: Sel, event: Option<&NSEvent>) {
-        let state = WindowState::from_view(self);
-
-        let result = state.handle_event(Event::MouseUp(MouseButton::Left));
+        let result = self.state().handle_event(Event::MouseUp(MouseButton::Left));
 
         if result != Some(Response::Capture) {
             let () = msg_send![super(self, NSView::class()), mouseUp: event];
@@ -203,9 +210,7 @@ impl View {
     }
 
     unsafe extern "C" fn right_mouse_down(&self, _: Sel, event: Option<&NSEvent>) {
-        let state = WindowState::from_view(self);
-
-        let result = state.handle_event(Event::MouseDown(MouseButton::Right));
+        let result = self.state().handle_event(Event::MouseDown(MouseButton::Right));
 
         if result != Some(Response::Capture) {
             let () = msg_send![super(self, NSView::class()), rightMouseDown: event];
@@ -213,9 +218,7 @@ impl View {
     }
 
     unsafe extern "C" fn right_mouse_up(&self, _: Sel, event: Option<&NSEvent>) {
-        let state = WindowState::from_view(self);
-
-        let result = state.handle_event(Event::MouseUp(MouseButton::Right));
+        let result = self.state().handle_event(Event::MouseUp(MouseButton::Right));
 
         if result != Some(Response::Capture) {
             let () = msg_send![super(self, NSView::class()), rightMouseUp: event];
@@ -223,13 +226,11 @@ impl View {
     }
 
     unsafe extern "C" fn other_mouse_down(&self, _: Sel, event: Option<&NSEvent>) {
-        let state = WindowState::from_view(self);
-
         let Some(event) = event else { return; };
 
         let button_number = event.buttonNumber();
         let result = if let Some(button) = mouse_button_from_number(button_number) {
-            state.handle_event(Event::MouseDown(button))
+            self.state().handle_event(Event::MouseDown(button))
         } else {
             None
         };
@@ -240,13 +241,11 @@ impl View {
     }
 
     unsafe extern "C" fn other_mouse_up(&self, _: Sel, event: Option<&NSEvent>) {
-        let state = WindowState::from_view(self);
-
         let Some(event) = event else { return; };
 
         let button_number = event.buttonNumber();
         let result = if let Some(button) = mouse_button_from_number(button_number) {
-            state.handle_event(Event::MouseUp(button))
+            self.state().handle_event(Event::MouseUp(button))
         } else {
             None
         };
@@ -257,8 +256,6 @@ impl View {
     }
 
     unsafe extern "C" fn scroll_wheel(&self, _: Sel, event: Option<&NSEvent>) {
-        let state = WindowState::from_view(self);
-
         let Some(event) = event else { return; };
 
         let dx = event.scrollingDeltaX();
@@ -268,7 +265,7 @@ impl View {
         } else {
             Point::new(32.0 * dx, 32.0 * dy)
         };
-        let result = state.handle_event(Event::Scroll(delta));
+        let result = self.state().handle_event(Event::Scroll(delta));
 
         if result != Some(Response::Capture) {
             let () = msg_send![super(self, NSView::class()), scrollWheel: event];
@@ -276,22 +273,17 @@ impl View {
     }
 
     unsafe extern "C" fn cursor_update(&self, _: Sel, _event: Option<&NSEvent>) {
-        let state = WindowState::from_view(self);
-
-        state.update_cursor();
+        self.state().update_cursor();
     }
 
     unsafe extern "C" fn window_should_close(&self, _: Sel, _sender: &NSWindow) -> Bool {
-        let state = WindowState::from_view(self);
-
-        state.handle_event(Event::Close);
+        self.state().handle_event(Event::Close);
 
         Bool::NO
     }
 
     unsafe extern "C" fn dealloc(&self, _: Sel) {
-        let state_ptr = self.state.get() as *const WindowState;
-        drop(Rc::from_raw(state_ptr));
+        drop(Box::from_raw(self.state.get() as *mut WindowState));
 
         let () = msg_send![super(self, NSView::class()), dealloc];
     }
@@ -305,16 +297,6 @@ struct WindowState {
 }
 
 impl WindowState {
-    unsafe fn from_view(view: &View) -> Rc<WindowState> {
-        let state_ptr = view.state.get() as *const WindowState;
-
-        let state_rc = Rc::from_raw(state_ptr);
-        let state = Rc::clone(&state_rc);
-        let _ = Rc::into_raw(state_rc);
-
-        state
-    }
-
     fn handle_event(&self, event: Event) -> Option<Response> {
         if let Ok(mut handler) = self.handler.try_borrow_mut() {
             if let Ok(mut data) = self.app_state.data.try_borrow_mut() {
@@ -367,7 +349,6 @@ impl WindowState {
 pub struct WindowInner {
     view: Id<View>,
     window: Option<Id<NSWindow>>,
-    state: Rc<WindowState>,
 }
 
 impl WindowInner {
@@ -401,10 +382,23 @@ impl WindowInner {
             NSSize::new(options.size.width, options.size.height),
         );
 
-        unsafe {
-            let view: Option<Allocated<View>> = msg_send_id![cx.inner.state.class, alloc];
-            let view: Id<View> = msg_send_id![view, initWithFrame: frame];
+        let mut handler = handler;
+        let handler_wrapper =
+            move |data_any: &mut dyn Any, app_state: &Rc<AppState>, event: Event<'_>| {
+                let data = data_any.downcast_mut::<T>().unwrap();
+                let cx = AppContext::from_inner(AppContextInner::new(app_state));
+                handler(data, &cx, event)
+            };
 
+        let state = Box::new(WindowState {
+            surface: RefCell::new(None),
+            cursor: Cell::new(Cursor::Arrow),
+            app_state: Rc::clone(cx.inner.state),
+            handler: RefCell::new(Box::new(handler_wrapper)),
+        });
+        let view = View::new(state, frame);
+
+        unsafe {
             let tracking_options = icrate::AppKit::NSTrackingMouseEnteredAndExited
                 | icrate::AppKit::NSTrackingMouseMoved
                 | icrate::AppKit::NSTrackingCursorUpdate
@@ -420,24 +414,6 @@ impl WindowInner {
                 None,
             );
             view.addTrackingArea(&tracking_area);
-
-            let mut handler = handler;
-            let handler_wrapper =
-                move |data_any: &mut dyn Any, app_state: &Rc<AppState>, event: Event<'_>| {
-                    let data = data_any.downcast_mut::<T>().unwrap();
-                    let cx = AppContext::from_inner(AppContextInner::new(app_state));
-                    handler(data, &cx, event)
-                };
-
-            let state = Rc::new(WindowState {
-                surface: RefCell::new(None),
-                cursor: Cell::new(Cursor::Arrow),
-                app_state: Rc::clone(cx.inner.state),
-                handler: RefCell::new(Box::new(handler_wrapper)),
-            });
-
-            let state_ptr = Rc::into_raw(Rc::clone(&state));
-            view.state.set(state_ptr as *mut c_void);
 
             if let Some(parent_view) = parent_view {
                 view.setHidden(true);
@@ -480,11 +456,7 @@ impl WindowInner {
                 None
             };
 
-            let inner = WindowInner {
-                view,
-                window,
-                state,
-            };
+            let inner = WindowInner { view, window };
 
             let scale = inner.scale();
 
@@ -498,7 +470,7 @@ impl WindowInner {
 
             surface.layer.setContentsScale(scale);
 
-            inner.state.surface.replace(Some(surface));
+            inner.view.state().surface.replace(Some(surface));
 
             Ok(inner)
         }
@@ -543,7 +515,7 @@ impl WindowInner {
     }
 
     pub fn present(&self, bitmap: Bitmap) {
-        if let Some(surface) = &mut *self.state.surface.borrow_mut() {
+        if let Some(surface) = &mut *self.view.state().surface.borrow_mut() {
             let width = surface.width;
             let height = surface.height;
             let copy_width = bitmap.width().min(width);
@@ -567,8 +539,10 @@ impl WindowInner {
     }
 
     pub fn set_cursor(&self, cursor: Cursor) {
-        self.state.cursor.set(cursor);
-        self.state.update_cursor();
+        let state = self.view.state();
+
+        state.cursor.set(cursor);
+        state.update_cursor();
     }
 
     pub fn set_mouse_position(&self, _position: Point) {}
