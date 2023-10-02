@@ -73,14 +73,14 @@ impl Timers {
             handler(data, &cx)
         };
 
-        let timers = Rc::new(TimerState {
+        let timer_state = Rc::new(TimerState {
             app_state: Rc::downgrade(app_state),
             handler: RefCell::new(Box::new(handler_wrapper)),
         });
 
         let mut context = CFRunLoopTimerContext {
             version: 0,
-            info: Rc::as_ptr(&timers) as *mut c_void,
+            info: Rc::as_ptr(&timer_state) as *mut c_void,
             retain: Some(retain),
             release: Some(release),
             copyDescription: None,
