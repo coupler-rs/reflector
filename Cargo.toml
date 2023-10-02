@@ -41,6 +41,7 @@ features = [
     "AppKit_NSTrackingArea",
     "CoreAnimation",
     "CoreAnimation_CALayer",
+    "Foundation_NSNumber",
     "Foundation_NSThread",
 ]
 

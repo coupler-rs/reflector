@@ -167,7 +167,7 @@ impl View {
         objc_disposeClassPair(class as *const _ as *mut objc_class);
     }
 
-    fn state(&self) -> &WindowState {
+    pub fn state(&self) -> &WindowState {
         unsafe { &*(self.state.get() as *const WindowState) }
     }
 
@@ -178,6 +178,10 @@ impl View {
         view.state.set(Box::into_raw(state) as *mut c_void);
 
         view
+    }
+
+    pub fn retain(&self) -> Id<View> {
+        unsafe { Id::retain(self as *const View as *mut View) }.unwrap()
     }
 
     unsafe extern "C" fn accepts_first_mouse(&self, _: Sel, _event: Option<&NSEvent>) -> Bool {
@@ -294,7 +298,7 @@ impl View {
     }
 }
 
-struct WindowState {
+pub struct WindowState {
     surface: RefCell<Option<Surface>>,
     cursor: Cell<Cursor>,
     app_state: Rc<AppState>,
@@ -302,7 +306,7 @@ struct WindowState {
 }
 
 impl WindowState {
-    fn handle_event(&self, event: Event) -> Option<Response> {
+    pub fn handle_event(&self, event: Event) -> Option<Response> {
         if let Ok(mut handler) = self.handler.try_borrow_mut() {
             if let Ok(mut data) = self.app_state.data.try_borrow_mut() {
                 if let Some(data) = &mut *data {
@@ -462,6 +466,8 @@ impl WindowInner {
                 None
             };
 
+            cx.inner.state.windows.borrow_mut().insert(Id::as_ptr(&view), view.retain());
+
             let inner = WindowInner { view, window };
 
             let scale = inner.scale();
@@ -563,5 +569,7 @@ impl Drop for WindowInner {
                 self.view.removeFromSuperview();
             }
         }
+
+        self.view.state().app_state.windows.borrow_mut().remove(&Id::as_ptr(&self.view));
     }
 }

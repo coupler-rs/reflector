@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::result;
@@ -12,6 +13,7 @@ use objc2::ClassType;
 use icrate::AppKit::{NSApplication, NSApplicationActivationPolicyRegular, NSCursor, NSImage};
 use icrate::Foundation::{NSPoint, NSSize, NSThread};
 
+use super::display_links::DisplayLinks;
 use super::timer::{TimerHandleInner, Timers};
 use super::window::View;
 use crate::{App, AppContext, AppMode, AppOptions, Error, IntoInnerError, Result};
@@ -20,6 +22,8 @@ pub struct AppState {
     pub class: &'static AnyClass,
     pub empty_cursor: Id<NSCursor>,
     pub timers: Timers,
+    pub display_links: DisplayLinks,
+    pub windows: RefCell<HashMap<*const View, Id<View>>>,
     pub data: RefCell<Option<Box<dyn Any>>>,
 }
 
@@ -66,8 +70,12 @@ impl<T: 'static> AppInner<T> {
                 class,
                 empty_cursor,
                 timers: Timers::new(),
+                display_links: DisplayLinks::new(),
+                windows: RefCell::new(HashMap::new()),
                 data: RefCell::new(None),
             });
+
+            state.display_links.init(&state);
 
             let cx = AppContext::from_inner(AppContextInner {
                 state: &state,

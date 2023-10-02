@@ -25,6 +25,9 @@ impl State {
                 println!("expose: {:?}", rects);
                 self.window.present(Bitmap::new(&self.framebuffer, self.width, self.height));
             }
+            Event::Frame => {
+                println!("frame");
+            }
             Event::MouseMove(pos) => {
                 println!("mouse move: {:?}", pos);
             }

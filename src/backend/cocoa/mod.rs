@@ -1,6 +1,7 @@
 use std::fmt;
 
 mod app;
+mod display_links;
 mod ffi;
 mod surface;
 mod timer;
