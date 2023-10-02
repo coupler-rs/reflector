@@ -7,14 +7,16 @@ use std::rc::Rc;
 use objc2::declare::{ClassBuilder, Ivar, IvarEncode, IvarType};
 use objc2::encode::Encoding;
 use objc2::rc::{Allocated, Id};
-use objc2::runtime::{AnyClass, Bool, Sel};
+use objc2::runtime::{AnyClass, Bool, ProtocolObject, Sel};
 use objc2::{class, msg_send, msg_send_id, sel};
 use objc2::{ClassType, Message, MessageReceiver, RefEncode};
 
 use objc_sys::{objc_class, objc_disposeClassPair};
 
-use icrate::AppKit::{NSCursor, NSEvent, NSScreen, NSTrackingArea, NSView, NSWindow};
-use icrate::Foundation::{NSInteger, NSPoint, NSRect, NSSize, NSString};
+use icrate::AppKit::{
+    NSCursor, NSEvent, NSScreen, NSTrackingArea, NSView, NSWindow, NSWindowDelegate,
+};
+use icrate::Foundation::{NSInteger, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString};
 
 use super::app::{AppContextInner, AppState};
 use super::surface::Surface;
@@ -67,6 +69,9 @@ unsafe impl RefEncode for View {
 }
 
 unsafe impl Message for View {}
+
+unsafe impl NSObjectProtocol for View {}
+unsafe impl NSWindowDelegate for View {}
 
 impl Deref for View {
     type Target = NSView;
@@ -444,7 +449,8 @@ impl WindowInner {
 
                 window.setTitle(&NSString::from_str(&options.title));
 
-                let () = msg_send![&window, setDelegate: Id::as_ptr(&view)];
+                let delegate = ProtocolObject::<dyn NSWindowDelegate>::from_ref(&*view);
+                window.setDelegate(Some(&delegate));
                 window.setContentView(Some(&view));
 
                 if options.position.is_none() {
