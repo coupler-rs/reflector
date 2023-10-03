@@ -6,19 +6,18 @@ use std::mem::MaybeUninit;
 use std::rc::Rc;
 use std::{mem, ptr, slice};
 
-use windows_sys::core::PCWSTR;
-use windows_sys::Win32::Foundation::{
-    GetLastError, FALSE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
-};
-use windows_sys::Win32::Graphics::Gdi::{self as gdi};
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
-use windows_sys::Win32::UI::WindowsAndMessaging::{
+use windows::core::PCWSTR;
+use windows::Win32::Foundation::{FALSE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Graphics::Gdi::{self as gdi};
+use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
+use windows::Win32::UI::WindowsAndMessaging::{
     self as msg, AdjustWindowRectEx, CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect,
     GetWindowLongPtrW, LoadCursorW, SetCursor, SetCursorPos, SetWindowLongPtrW, ShowWindow,
+    HCURSOR, HMENU, WINDOW_EX_STYLE,
 };
 
 use super::app::{AppContextInner, AppState};
-use super::{hinstance, to_wstring, OsError};
+use super::{hinstance, to_wstring};
 use crate::{
     AppContext, Bitmap, Cursor, Error, Event, MouseButton, Point, RawParent, Rect, Response,
     Result, Size, WindowOptions,
@@ -36,22 +35,22 @@ fn HIWORD(l: u32) -> u16 {
 
 #[allow(non_snake_case)]
 fn GET_X_LPARAM(lp: LPARAM) -> i16 {
-    LOWORD(lp as u32) as i16
+    LOWORD(lp.0 as u32) as i16
 }
 
 #[allow(non_snake_case)]
 fn GET_Y_LPARAM(lp: LPARAM) -> i16 {
-    HIWORD(lp as u32) as i16
+    HIWORD(lp.0 as u32) as i16
 }
 
 #[allow(non_snake_case)]
 fn GET_XBUTTON_WPARAM(wParam: WPARAM) -> u16 {
-    HIWORD(wParam as u32)
+    HIWORD(wParam.0 as u32)
 }
 
 #[allow(non_snake_case)]
 fn GET_WHEEL_DELTA_WPARAM(wParam: WPARAM) -> i16 {
-    HIWORD(wParam as u32) as i16
+    HIWORD(wParam.0 as u32) as i16
 }
 
 struct WindowState {
@@ -65,20 +64,22 @@ impl WindowState {
     fn update_cursor(&self) {
         unsafe {
             let hcursor = match self.cursor.get() {
-                Cursor::Arrow => LoadCursorW(0, msg::IDC_ARROW),
-                Cursor::Crosshair => LoadCursorW(0, msg::IDC_CROSS),
-                Cursor::Hand => LoadCursorW(0, msg::IDC_HAND),
-                Cursor::IBeam => LoadCursorW(0, msg::IDC_IBEAM),
-                Cursor::No => LoadCursorW(0, msg::IDC_NO),
-                Cursor::SizeNs => LoadCursorW(0, msg::IDC_SIZENS),
-                Cursor::SizeWe => LoadCursorW(0, msg::IDC_SIZEWE),
-                Cursor::SizeNesw => LoadCursorW(0, msg::IDC_SIZENESW),
-                Cursor::SizeNwse => LoadCursorW(0, msg::IDC_SIZENWSE),
-                Cursor::Wait => LoadCursorW(0, msg::IDC_WAIT),
-                Cursor::None => 0,
+                Cursor::Arrow => LoadCursorW(HINSTANCE(0), msg::IDC_ARROW),
+                Cursor::Crosshair => LoadCursorW(HINSTANCE(0), msg::IDC_CROSS),
+                Cursor::Hand => LoadCursorW(HINSTANCE(0), msg::IDC_HAND),
+                Cursor::IBeam => LoadCursorW(HINSTANCE(0), msg::IDC_IBEAM),
+                Cursor::No => LoadCursorW(HINSTANCE(0), msg::IDC_NO),
+                Cursor::SizeNs => LoadCursorW(HINSTANCE(0), msg::IDC_SIZENS),
+                Cursor::SizeWe => LoadCursorW(HINSTANCE(0), msg::IDC_SIZEWE),
+                Cursor::SizeNesw => LoadCursorW(HINSTANCE(0), msg::IDC_SIZENESW),
+                Cursor::SizeNwse => LoadCursorW(HINSTANCE(0), msg::IDC_SIZENWSE),
+                Cursor::Wait => LoadCursorW(HINSTANCE(0), msg::IDC_WAIT),
+                Cursor::None => Ok(HCURSOR(0)),
             };
 
-            SetCursor(hcursor);
+            if let Ok(hcursor) = hcursor {
+                SetCursor(hcursor);
+            }
         }
     }
 
@@ -134,16 +135,16 @@ impl WindowInner {
                 right: (position.x + options.size.width).round() as i32,
                 bottom: (position.y + options.size.height).round() as i32,
             };
-            AdjustWindowRectEx(&mut rect, style, FALSE, 0);
+            let _ = AdjustWindowRectEx(&mut rect, style, FALSE, WINDOW_EX_STYLE(0));
 
             let parent = if let Some(parent) = options.parent {
                 if let RawParent::Win32(hwnd) = parent {
-                    hwnd as HWND
+                    HWND(hwnd as isize)
                 } else {
                     return Err(Error::InvalidWindowHandle);
                 }
             } else {
-                0
+                HWND(0)
             };
 
             let (x, y) = if options.position.is_some() {
@@ -153,23 +154,21 @@ impl WindowInner {
             };
 
             let hwnd = CreateWindowExW(
-                0,
-                cx.inner.state.class as PCWSTR,
-                window_name.as_ptr(),
+                WINDOW_EX_STYLE(0),
+                cx.inner.state.class,
+                PCWSTR(window_name.as_ptr()),
                 style,
                 x,
                 y,
                 rect.right - rect.left,
                 rect.bottom - rect.top,
                 parent,
-                0,
+                HMENU(0),
                 hinstance(),
-                ptr::null_mut(),
+                None,
             );
-            if hwnd == 0 {
-                return Err(Error::Os(OsError {
-                    code: GetLastError(),
-                }));
+            if hwnd == HWND(0) {
+                return Err(windows::core::Error::from_win32().into());
             }
 
             let mut handler = handler;
@@ -214,7 +213,7 @@ impl WindowInner {
             bottom: 0,
         };
         unsafe {
-            GetClientRect(self.hwnd, &mut rect);
+            let _ = GetClientRect(self.hwnd, &mut rect);
         }
 
         Size::new(
@@ -240,7 +239,7 @@ impl WindowInner {
     fn present_inner(&self, bitmap: Bitmap, rects: Option<&[Rect]>) {
         unsafe {
             let hdc = gdi::GetDC(self.hwnd);
-            if hdc != 0 {
+            if hdc != gdi::HDC(0) {
                 if let Some(rects) = rects {
                     let (layout, _) = Layout::new::<gdi::RGNDATAHEADER>()
                         .extend(Layout::array::<RECT>(rects.len()).unwrap())
@@ -285,9 +284,9 @@ impl WindowInner {
                         rcBound: bounds,
                     };
 
-                    let rgn = gdi::ExtCreateRegion(ptr::null(), layout.size() as u32, ptr);
+                    let rgn = gdi::ExtCreateRegion(None, layout.size() as u32, ptr);
                     gdi::SelectClipRgn(hdc, rgn);
-                    gdi::DeleteObject(rgn as gdi::HGDIOBJ);
+                    gdi::DeleteObject(rgn);
 
                     dealloc(ptr as *mut u8, layout);
                 }
@@ -299,7 +298,7 @@ impl WindowInner {
                         biHeight: -(bitmap.height() as i32),
                         biPlanes: 1,
                         biBitCount: 32,
-                        biCompression: gdi::BI_RGB as u32,
+                        biCompression: gdi::BI_RGB.0,
                         ..mem::zeroed()
                     },
                     ..mem::zeroed()
@@ -315,14 +314,14 @@ impl WindowInner {
                     0,
                     bitmap.width() as i32,
                     bitmap.height() as i32,
-                    bitmap.data().as_ptr() as *const c_void,
+                    Some(bitmap.data().as_ptr() as *const c_void),
                     &bitmap_info,
                     gdi::DIB_RGB_COLORS,
                     gdi::SRCCOPY,
                 );
 
                 if rects.is_some() {
-                    gdi::SelectClipRgn(hdc, 0);
+                    gdi::SelectClipRgn(hdc, gdi::HRGN(0));
                 }
 
                 gdi::ReleaseDC(self.hwnd, hdc);
@@ -342,7 +341,7 @@ impl WindowInner {
                 y: position.y as c_int,
             };
             gdi::ClientToScreen(self.hwnd, &mut point);
-            SetCursorPos(point.x, point.y);
+            let _ = SetCursorPos(point.x, point.y);
         }
     }
 }
@@ -350,7 +349,7 @@ impl WindowInner {
 impl Drop for WindowInner {
     fn drop(&mut self) {
         unsafe {
-            DestroyWindow(self.hwnd);
+            let _ = DestroyWindow(self.hwnd);
         }
     }
 }
@@ -371,26 +370,26 @@ pub unsafe extern "system" fn wnd_proc(
 
         match msg {
             msg::WM_SETCURSOR => {
-                if LOWORD(lparam as u32) == msg::HTCLIENT as u16 {
+                if LOWORD(lparam.0 as u32) == msg::HTCLIENT as u16 {
                     state.update_cursor();
-                    return 0;
+                    return LRESULT(0);
                 }
             }
             msg::WM_ERASEBKGND => {
-                return 1;
+                return LRESULT(1);
             }
             msg::WM_PAINT => {
                 let mut rects = Vec::new();
 
                 let rgn = gdi::CreateRectRgn(0, 0, 0, 0);
-                gdi::GetUpdateRgn(hwnd, rgn, 0);
-                let size = gdi::GetRegionData(rgn, 0, ptr::null_mut());
+                gdi::GetUpdateRgn(hwnd, rgn, false);
+                let size = gdi::GetRegionData(rgn, 0, None);
                 if size != 0 {
                     let align = mem::align_of::<gdi::RGNDATA>();
                     let layout = Layout::from_size_align(size as usize, align).unwrap();
                     let ptr = alloc(layout) as *mut gdi::RGNDATA;
 
-                    let result = gdi::GetRegionData(rgn, size, ptr);
+                    let result = gdi::GetRegionData(rgn, size, Some(ptr));
                     if result == size {
                         let count = (*ptr).rdh.nCount as usize;
 
@@ -410,16 +409,16 @@ pub unsafe extern "system" fn wnd_proc(
 
                     dealloc(ptr as *mut u8, layout);
                 }
-                gdi::DeleteObject(rgn as gdi::HGDIOBJ);
+                gdi::DeleteObject(rgn);
 
                 // Only validate the dirty region if we successfully invoked the event handler.
                 // This ensures that if we receive an expose event during the App::new builder
                 // callback, we will receive it again later.
                 if state.handle_event(Event::Expose(&rects)).is_some() {
-                    gdi::ValidateRgn(hwnd, 0);
+                    gdi::ValidateRgn(hwnd, gdi::HRGN(0));
                 }
 
-                return 0;
+                return LRESULT(0);
             }
             msg::WM_MOUSEMOVE => {
                 let point = Point {
@@ -428,7 +427,7 @@ pub unsafe extern "system" fn wnd_proc(
                 };
                 state.handle_event(Event::MouseMove(point));
 
-                return 0;
+                return LRESULT(0);
             }
             msg::WM_LBUTTONDOWN
             | msg::WM_LBUTTONUP
@@ -474,14 +473,14 @@ pub unsafe extern "system" fn wnd_proc(
                             Event::MouseUp(_) => {
                                 state.mouse_down_count.set(state.mouse_down_count.get() - 1);
                                 if state.mouse_down_count.get() == 0 {
-                                    ReleaseCapture();
+                                    let _ = ReleaseCapture();
                                 }
                             }
                             _ => {}
                         }
 
                         if state.handle_event(event) == Some(Response::Capture) {
-                            return 0;
+                            return LRESULT(0);
                         }
                     }
                 }
@@ -495,12 +494,12 @@ pub unsafe extern "system" fn wnd_proc(
                 };
 
                 if state.handle_event(Event::Scroll(point)) == Some(Response::Capture) {
-                    return 0;
+                    return LRESULT(0);
                 }
             }
             msg::WM_CLOSE => {
                 state.handle_event(Event::Close);
-                return 0;
+                return LRESULT(0);
             }
             msg::WM_DESTROY => {
                 drop(Rc::from_raw(state_ptr));

@@ -5,21 +5,22 @@ use std::rc::Rc;
 use std::time::Duration;
 use std::{mem, ptr, result};
 
-use windows_sys::core::PCWSTR;
-use windows_sys::Win32::Foundation::GetLastError;
-use windows_sys::Win32::UI::WindowsAndMessaging::{
+use windows::core::PCWSTR;
+use windows::Win32::Foundation::{HINSTANCE, HWND};
+use windows::Win32::Graphics::Gdi::HBRUSH;
+use windows::Win32::UI::WindowsAndMessaging::{
     self as msg, DispatchMessageW, GetMessageW, LoadCursorW, PeekMessageW, PostQuitMessage,
-    RegisterClassW, TranslateMessage, UnregisterClassW, MSG, WNDCLASSW,
+    RegisterClassW, TranslateMessage, UnregisterClassW, HICON, MSG, WNDCLASSW,
 };
 
 use super::dpi::DpiFns;
 use super::timer::{TimerHandleInner, Timers};
 use super::window::wnd_proc;
-use super::{class_name, hinstance, to_wstring, OsError};
+use super::{class_name, hinstance, to_wstring};
 use crate::{App, AppContext, AppMode, AppOptions, Error, IntoInnerError, Result};
 
 pub struct AppState {
-    pub class: u16,
+    pub class: PCWSTR,
     pub dpi: DpiFns,
     pub timers: Timers,
     pub data: RefCell<Option<Box<dyn Any>>>,
@@ -28,7 +29,7 @@ pub struct AppState {
 impl Drop for AppState {
     fn drop(&mut self) {
         unsafe {
-            UnregisterClassW(self.class as PCWSTR, hinstance());
+            let _ = UnregisterClassW(self.class, hinstance());
         }
     }
 }
@@ -53,21 +54,19 @@ impl<T: 'static> AppInner<T> {
                 cbClsExtra: 0,
                 cbWndExtra: 0,
                 hInstance: hinstance(),
-                hIcon: 0,
-                hCursor: LoadCursorW(0, msg::IDC_ARROW),
-                hbrBackground: 0,
-                lpszMenuName: ptr::null(),
-                lpszClassName: class_name.as_ptr(),
+                hIcon: HICON(0),
+                hCursor: LoadCursorW(HINSTANCE(0), msg::IDC_ARROW)?,
+                hbrBackground: HBRUSH(0),
+                lpszMenuName: PCWSTR(ptr::null()),
+                lpszClassName: PCWSTR(class_name.as_ptr()),
             };
 
             let class = RegisterClassW(&wnd_class);
             if class == 0 {
-                return Err(Error::Os(OsError {
-                    code: GetLastError(),
-                }));
+                return Err(windows::core::Error::from_win32().into());
             }
 
-            class
+            PCWSTR(class as *const u16)
         };
 
         let dpi = DpiFns::load();
@@ -109,12 +108,10 @@ impl<T: 'static> AppInner<T> {
             unsafe {
                 let mut msg: MSG = mem::zeroed();
 
-                let result = GetMessageW(&mut msg, 0, 0, 0);
-                if result < 0 {
-                    return Err(Error::Os(OsError {
-                        code: GetLastError(),
-                    }));
-                } else if result == 0 {
+                let result = GetMessageW(&mut msg, HWND(0), 0, 0);
+                if result.0 < 0 {
+                    return Err(windows::core::Error::from_win32().into());
+                } else if result.0 == 0 {
                     return Ok(());
                 }
 
@@ -133,8 +130,8 @@ impl<T: 'static> AppInner<T> {
             unsafe {
                 let mut msg: MSG = mem::zeroed();
 
-                let result = PeekMessageW(&mut msg, 0, 0, 0, msg::PM_REMOVE);
-                if result == 0 {
+                let result = PeekMessageW(&mut msg, HWND(0), 0, 0, msg::PM_REMOVE);
+                if result.0 == 0 {
                     return Ok(());
                 }
 

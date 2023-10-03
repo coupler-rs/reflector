@@ -2,8 +2,8 @@ use std::ffi::OsStr;
 use std::fmt;
 use std::os::windows::ffi::OsStrExt;
 
-use windows_sys::Win32::Foundation::{HMODULE, WIN32_ERROR};
-use windows_sys::Win32::System::SystemServices::IMAGE_DOS_HEADER;
+use windows::Win32::Foundation::HINSTANCE;
+use windows::Win32::System::SystemServices::IMAGE_DOS_HEADER;
 
 mod app;
 mod dpi;
@@ -14,12 +14,14 @@ pub use app::{AppContextInner, AppInner};
 pub use timer::TimerHandleInner;
 pub use window::WindowInner;
 
-fn hinstance() -> HMODULE {
+use crate::Error;
+
+fn hinstance() -> HINSTANCE {
     extern "C" {
         static __ImageBase: IMAGE_DOS_HEADER;
     }
 
-    unsafe { &__ImageBase as *const IMAGE_DOS_HEADER as HMODULE }
+    unsafe { HINSTANCE(&__ImageBase as *const IMAGE_DOS_HEADER as isize) }
 }
 
 fn to_wstring<S: AsRef<OsStr> + ?Sized>(str: &S) -> Vec<u16> {
@@ -44,11 +46,17 @@ fn class_name(prefix: &str) -> String {
 
 #[derive(Debug)]
 pub struct OsError {
-    code: WIN32_ERROR,
+    error: windows::core::Error,
 }
 
 impl fmt::Display for OsError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "{}", self.code)
+        write!(fmt, "{}", self.error)
+    }
+}
+
+impl From<windows::core::Error> for Error {
+    fn from(err: windows::core::Error) -> Error {
+        Error::Os(OsError { error: err })
     }
 }

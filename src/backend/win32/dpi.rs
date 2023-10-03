@@ -1,18 +1,18 @@
 use std::mem;
 
-use windows_sys::core::HRESULT;
-use windows_sys::Win32::Foundation::{BOOL, FALSE, HWND, RECT, S_OK, TRUE};
-use windows_sys::Win32::Graphics::Gdi::{
-    GetDC, GetDeviceCaps, MonitorFromWindow, ReleaseDC, HMONITOR, LOGPIXELSX,
+use windows::core::{HRESULT, PCSTR};
+use windows::Win32::Foundation::{BOOL, FALSE, HWND, RECT, S_OK, TRUE};
+use windows::Win32::Graphics::Gdi::{
+    GetDC, GetDeviceCaps, MonitorFromWindow, ReleaseDC, HDC, HMONITOR, LOGPIXELSX,
     MONITOR_DEFAULTTONEAREST,
 };
-use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
-use windows_sys::Win32::UI::HiDpi::{
+use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
+use windows::Win32::UI::HiDpi::{
     DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE,
     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, MDT_EFFECTIVE_DPI, MONITOR_DPI_TYPE,
     PROCESS_DPI_AWARENESS, PROCESS_PER_MONITOR_DPI_AWARE,
 };
-use windows_sys::Win32::UI::WindowsAndMessaging::{
+use windows::Win32::UI::WindowsAndMessaging::{
     USER_DEFAULT_SCREEN_DPI, WINDOW_EX_STYLE, WINDOW_STYLE,
 };
 
@@ -55,8 +55,8 @@ impl DpiFns {
     pub fn load() -> DpiFns {
         macro_rules! load {
             ($lib:expr, $symbol:literal) => {
-                if $lib != 0 {
-                    mem::transmute(GetProcAddress($lib, c_str!($symbol)))
+                if let Ok(lib) = $lib {
+                    mem::transmute(GetProcAddress(lib, PCSTR(c_str!($symbol))))
                 } else {
                     None
                 }
@@ -64,8 +64,8 @@ impl DpiFns {
         }
 
         unsafe {
-            let user32 = LoadLibraryA(c_str!("user32.dll"));
-            let shcore = LoadLibraryA(c_str!("shcore.dll"));
+            let user32 = LoadLibraryA(PCSTR(c_str!("user32.dll")));
+            let shcore = LoadLibraryA(PCSTR(c_str!("shcore.dll")));
 
             DpiFns {
                 SetProcessDPIAware: load!(user32, "SetProcessDPIAware"),
@@ -90,7 +90,7 @@ impl DpiFns {
                     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
                 }
             } else if let Some(SetProcessDpiAwareness) = self.SetProcessDpiAwareness {
-                SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+                let _ = SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
             } else if let Some(SetProcessDPIAware) = self.SetProcessDPIAware {
                 SetProcessDPIAware();
             }
@@ -109,7 +109,7 @@ impl DpiFns {
                 dpi
             } else if let Some(GetDpiForMonitor) = self.GetDpiForMonitor {
                 let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-                if monitor == 0 {
+                if monitor == HMONITOR(0) {
                     return USER_DEFAULT_SCREEN_DPI;
                 }
 
@@ -124,7 +124,7 @@ impl DpiFns {
             } else if let Some(IsProcessDPIAware) = self.IsProcessDPIAware {
                 if IsProcessDPIAware() == TRUE {
                     let hdc = GetDC(hwnd);
-                    if hdc == 0 {
+                    if hdc == HDC(0) {
                         return USER_DEFAULT_SCREEN_DPI;
                     }
 

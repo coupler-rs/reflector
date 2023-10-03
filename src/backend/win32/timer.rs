@@ -5,17 +5,19 @@ use std::ptr;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
-use windows_sys::core::PCWSTR;
-use windows_sys::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, WPARAM};
-use windows_sys::Win32::UI::WindowsAndMessaging::{
+use windows::core::PCWSTR;
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Graphics::Gdi::HBRUSH;
+use windows::Win32::UI::WindowsAndMessaging::{
     self as msg, CreateWindowExW, DefWindowProcW, DestroyWindow, GetWindowLongPtrW, KillTimer,
-    RegisterClassW, SetTimer, SetWindowLongPtrW, UnregisterClassW, WNDCLASSW,
+    RegisterClassW, SetTimer, SetWindowLongPtrW, UnregisterClassW, HCURSOR, HICON, HMENU,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW, WNDCLASS_STYLES,
 };
 
 use super::app::{AppContextInner, AppState};
-use super::{class_name, hinstance, to_wstring, OsError};
+use super::{class_name, hinstance, to_wstring};
 use crate::AppContext;
-use crate::{Error, Result};
+use crate::Result;
 
 pub unsafe extern "system" fn wnd_proc(
     hwnd: HWND,
@@ -32,7 +34,7 @@ pub unsafe extern "system" fn wnd_proc(
         match msg {
             msg::WM_TIMER => {
                 if let Some(app_state) = app_state.upgrade() {
-                    let timer_state = app_state.timers.timers.borrow().get(&wparam).cloned();
+                    let timer_state = app_state.timers.timers.borrow().get(&wparam.0).cloned();
                     if let Some(timer_state) = timer_state {
                         if let Ok(mut data) = app_state.data.try_borrow_mut() {
                             if let Some(data) = &mut *data {
@@ -58,7 +60,7 @@ struct TimerState {
 }
 
 pub struct Timers {
-    class: u16,
+    class: PCWSTR,
     hwnd: HWND,
     next_id: Cell<usize>,
     timers: RefCell<HashMap<usize, Rc<TimerState>>>,
@@ -69,45 +71,42 @@ impl Timers {
         let class_name = to_wstring(&class_name("timers-"));
 
         let wnd_class = WNDCLASSW {
-            style: 0,
+            style: WNDCLASS_STYLES(0),
             lpfnWndProc: Some(wnd_proc),
             cbClsExtra: 0,
             cbWndExtra: 0,
             hInstance: hinstance(),
-            hIcon: 0,
-            hCursor: 0,
-            hbrBackground: 0,
-            lpszMenuName: ptr::null(),
-            lpszClassName: class_name.as_ptr(),
+            hIcon: HICON(0),
+            hCursor: HCURSOR(0),
+            hbrBackground: HBRUSH(0),
+            lpszMenuName: PCWSTR(ptr::null()),
+            lpszClassName: PCWSTR(class_name.as_ptr()),
         };
 
         let class = unsafe { RegisterClassW(&wnd_class) };
         if class == 0 {
-            return Err(Error::Os(OsError {
-                code: unsafe { GetLastError() },
-            }));
+            return Err(windows::core::Error::from_win32().into());
         }
+        let class = PCWSTR(class as *const u16);
 
         let hwnd = unsafe {
             CreateWindowExW(
-                0,
-                class as PCWSTR,
-                ptr::null_mut(),
-                0,
+                WINDOW_EX_STYLE(0),
+                class,
+                PCWSTR(ptr::null()),
+                WINDOW_STYLE(0),
                 msg::CW_USEDEFAULT,
                 msg::CW_USEDEFAULT,
                 0,
                 0,
-                0,
-                0,
+                HWND(0),
+                HMENU(0),
                 hinstance(),
-                ptr::null_mut(),
+                None,
             )
         };
-        if hwnd == 0 {
-            return Err(Error::Os(OsError {
-                code: unsafe { GetLastError() },
-            }));
+        if hwnd == HWND(0) {
+            return Err(windows::core::Error::from_win32().into());
         }
 
         Ok(Timers {
@@ -170,13 +169,13 @@ impl Drop for Timers {
     fn drop(&mut self) {
         for (timer_id, _timer) in self.timers.take() {
             unsafe {
-                KillTimer(self.hwnd, timer_id);
+                let _ = KillTimer(self.hwnd, timer_id);
             }
         }
 
         unsafe {
-            DestroyWindow(self.hwnd);
-            UnregisterClassW(self.class as PCWSTR, hinstance());
+            let _ = DestroyWindow(self.hwnd);
+            let _ = UnregisterClassW(self.class, hinstance());
         }
     }
 }
@@ -191,7 +190,7 @@ impl TimerHandleInner {
         if let Some(app_state) = self.app_state.upgrade() {
             if let Some(_) = app_state.timers.timers.borrow_mut().remove(&self.timer_id) {
                 unsafe {
-                    KillTimer(app_state.timers.hwnd, self.timer_id);
+                    let _ = KillTimer(app_state.timers.hwnd, self.timer_id);
                 }
             }
         }
