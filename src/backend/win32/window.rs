@@ -304,20 +304,19 @@ impl WindowInner {
                     ..mem::zeroed()
                 };
 
-                gdi::StretchDIBits(
+                gdi::SetDIBitsToDevice(
                     hdc,
                     0,
                     0,
-                    bitmap.width() as i32,
-                    bitmap.height() as i32,
+                    bitmap.width() as u32,
+                    bitmap.height() as u32,
                     0,
                     0,
-                    bitmap.width() as i32,
-                    bitmap.height() as i32,
-                    Some(bitmap.data().as_ptr() as *const c_void),
+                    0,
+                    bitmap.height() as u32,
+                    bitmap.data().as_ptr() as *const c_void,
                     &bitmap_info,
                     gdi::DIB_RGB_COLORS,
-                    gdi::SRCCOPY,
                 );
 
                 if rects.is_some() {
