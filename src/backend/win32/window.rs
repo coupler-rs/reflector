@@ -341,7 +341,7 @@ impl WindowInner {
 
             let hwnd = CreateWindowExW(
                 WINDOW_EX_STYLE(0),
-                cx.inner.state.class,
+                cx.inner.state.window_class,
                 PCWSTR(window_name.as_ptr()),
                 style,
                 x,
