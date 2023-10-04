@@ -3,20 +3,18 @@ use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::time::Duration;
-use std::{mem, ptr, result};
+use std::{mem, result};
 
 use windows::core::PCWSTR;
-use windows::Win32::Foundation::{HINSTANCE, HWND};
-use windows::Win32::Graphics::Gdi::HBRUSH;
+use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{
-    self as msg, DispatchMessageW, GetMessageW, LoadCursorW, PeekMessageW, PostQuitMessage,
-    RegisterClassW, TranslateMessage, UnregisterClassW, HICON, MSG, WNDCLASSW,
+    self as msg, DispatchMessageW, GetMessageW, PeekMessageW, PostQuitMessage, TranslateMessage,
+    MSG,
 };
 
 use super::dpi::DpiFns;
 use super::timer::{TimerHandleInner, Timers};
-use super::window::wnd_proc;
-use super::{class_name, hinstance, to_wstring};
+use super::window;
 use crate::{App, AppContext, AppMode, AppOptions, Error, IntoInnerError, Result};
 
 pub struct AppState {
@@ -29,7 +27,7 @@ pub struct AppState {
 impl Drop for AppState {
     fn drop(&mut self) {
         unsafe {
-            let _ = UnregisterClassW(self.class, hinstance());
+            window::unregister_class(self.class);
         }
     }
 }
@@ -45,29 +43,7 @@ impl<T: 'static> AppInner<T> {
         F: FnOnce(&AppContext<T>) -> Result<T>,
         T: 'static,
     {
-        let class_name = to_wstring(&class_name("window-"));
-
-        let class = unsafe {
-            let wnd_class = WNDCLASSW {
-                style: msg::CS_HREDRAW | msg::CS_VREDRAW | msg::CS_OWNDC,
-                lpfnWndProc: Some(wnd_proc),
-                cbClsExtra: 0,
-                cbWndExtra: 0,
-                hInstance: hinstance(),
-                hIcon: HICON(0),
-                hCursor: LoadCursorW(HINSTANCE(0), msg::IDC_ARROW)?,
-                hbrBackground: HBRUSH(0),
-                lpszMenuName: PCWSTR(ptr::null()),
-                lpszClassName: PCWSTR(class_name.as_ptr()),
-            };
-
-            let class = RegisterClassW(&wnd_class);
-            if class == 0 {
-                return Err(windows::core::Error::from_win32().into());
-            }
-
-            PCWSTR(class as *const u16)
-        };
+        let class = window::register_class()?;
 
         let dpi = DpiFns::load();
         if options.mode == AppMode::Owner {

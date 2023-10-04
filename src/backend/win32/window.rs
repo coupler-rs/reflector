@@ -8,16 +8,16 @@ use std::{mem, ptr, slice};
 
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{FALSE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
-use windows::Win32::Graphics::Gdi::{self as gdi};
+use windows::Win32::Graphics::Gdi::{self as gdi, HBRUSH};
 use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
 use windows::Win32::UI::WindowsAndMessaging::{
     self as msg, AdjustWindowRectEx, CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect,
-    GetWindowLongPtrW, LoadCursorW, SetCursor, SetCursorPos, SetWindowLongPtrW, ShowWindow,
-    HCURSOR, HMENU, WINDOW_EX_STYLE,
+    GetWindowLongPtrW, LoadCursorW, RegisterClassW, SetCursor, SetCursorPos, SetWindowLongPtrW,
+    ShowWindow, UnregisterClassW, HCURSOR, HICON, HMENU, WINDOW_EX_STYLE, WNDCLASSW,
 };
 
 use super::app::{AppContextInner, AppState};
-use super::{hinstance, to_wstring};
+use super::{class_name, hinstance, to_wstring};
 use crate::{
     AppContext, Bitmap, Cursor, Error, Event, MouseButton, Point, RawParent, Rect, Response,
     Result, Size, WindowOptions,
@@ -51,6 +51,192 @@ fn GET_XBUTTON_WPARAM(wParam: WPARAM) -> u16 {
 #[allow(non_snake_case)]
 fn GET_WHEEL_DELTA_WPARAM(wParam: WPARAM) -> i16 {
     HIWORD(wParam.0 as u32) as i16
+}
+
+pub fn register_class() -> Result<PCWSTR> {
+    let class_name = to_wstring(&class_name("window-"));
+
+    let wnd_class = WNDCLASSW {
+        style: msg::CS_HREDRAW | msg::CS_VREDRAW | msg::CS_OWNDC,
+        lpfnWndProc: Some(wnd_proc),
+        cbClsExtra: 0,
+        cbWndExtra: 0,
+        hInstance: hinstance(),
+        hIcon: HICON(0),
+        hCursor: unsafe { LoadCursorW(HINSTANCE(0), msg::IDC_ARROW)? },
+        hbrBackground: HBRUSH(0),
+        lpszMenuName: PCWSTR(ptr::null()),
+        lpszClassName: PCWSTR(class_name.as_ptr()),
+    };
+
+    let class = unsafe { RegisterClassW(&wnd_class) };
+    if class == 0 {
+        return Err(windows::core::Error::from_win32().into());
+    }
+
+    Ok(PCWSTR(class as *const u16))
+}
+
+pub unsafe fn unregister_class(class: PCWSTR) {
+    let _ = UnregisterClassW(class, hinstance());
+}
+
+pub unsafe extern "system" fn wnd_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    let state_ptr = GetWindowLongPtrW(hwnd, msg::GWLP_USERDATA) as *const WindowState;
+    if !state_ptr.is_null() {
+        // Hold a reference to the WindowState for the duration of the wnd_proc, in case the
+        // window is closed during an event handler
+        let state_rc = Rc::from_raw(state_ptr);
+        let state = Rc::clone(&state_rc);
+        let _ = Rc::into_raw(state_rc);
+
+        match msg {
+            msg::WM_SETCURSOR => {
+                if LOWORD(lparam.0 as u32) == msg::HTCLIENT as u16 {
+                    state.update_cursor();
+                    return LRESULT(0);
+                }
+            }
+            msg::WM_ERASEBKGND => {
+                return LRESULT(1);
+            }
+            msg::WM_PAINT => {
+                let mut rects = Vec::new();
+
+                let rgn = gdi::CreateRectRgn(0, 0, 0, 0);
+                gdi::GetUpdateRgn(hwnd, rgn, false);
+                let size = gdi::GetRegionData(rgn, 0, None);
+                if size != 0 {
+                    let align = mem::align_of::<gdi::RGNDATA>();
+                    let layout = Layout::from_size_align(size as usize, align).unwrap();
+                    let ptr = alloc(layout) as *mut gdi::RGNDATA;
+
+                    let result = gdi::GetRegionData(rgn, size, Some(ptr));
+                    if result == size {
+                        let count = (*ptr).rdh.nCount as usize;
+
+                        let buffer_ptr = ptr::addr_of!((*ptr).Buffer) as *const RECT;
+                        let buffer = slice::from_raw_parts(buffer_ptr, count);
+
+                        rects.reserve_exact(count);
+                        for rect in buffer {
+                            rects.push(Rect {
+                                x: rect.left as f64,
+                                y: rect.top as f64,
+                                width: (rect.right - rect.left) as f64,
+                                height: (rect.bottom - rect.top) as f64,
+                            });
+                        }
+                    }
+
+                    dealloc(ptr as *mut u8, layout);
+                }
+                gdi::DeleteObject(rgn);
+
+                // Only validate the dirty region if we successfully invoked the event handler.
+                // This ensures that if we receive an expose event during the App::new builder
+                // callback, we will receive it again later.
+                if state.handle_event(Event::Expose(&rects)).is_some() {
+                    gdi::ValidateRgn(hwnd, gdi::HRGN(0));
+                }
+
+                return LRESULT(0);
+            }
+            msg::WM_MOUSEMOVE => {
+                let point = Point {
+                    x: GET_X_LPARAM(lparam) as f64,
+                    y: GET_Y_LPARAM(lparam) as f64,
+                };
+                state.handle_event(Event::MouseMove(point));
+
+                return LRESULT(0);
+            }
+            msg::WM_LBUTTONDOWN
+            | msg::WM_LBUTTONUP
+            | msg::WM_MBUTTONDOWN
+            | msg::WM_MBUTTONUP
+            | msg::WM_RBUTTONDOWN
+            | msg::WM_RBUTTONUP
+            | msg::WM_XBUTTONDOWN
+            | msg::WM_XBUTTONUP => {
+                let button = match msg {
+                    msg::WM_LBUTTONDOWN | msg::WM_LBUTTONUP => Some(MouseButton::Left),
+                    msg::WM_MBUTTONDOWN | msg::WM_MBUTTONUP => Some(MouseButton::Middle),
+                    msg::WM_RBUTTONDOWN | msg::WM_RBUTTONUP => Some(MouseButton::Right),
+                    msg::WM_XBUTTONDOWN | msg::WM_XBUTTONUP => match GET_XBUTTON_WPARAM(wparam) {
+                        msg::XBUTTON1 => Some(MouseButton::Back),
+                        msg::XBUTTON2 => Some(MouseButton::Forward),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+
+                if let Some(button) = button {
+                    let event = match msg {
+                        msg::WM_LBUTTONDOWN
+                        | msg::WM_MBUTTONDOWN
+                        | msg::WM_RBUTTONDOWN
+                        | msg::WM_XBUTTONDOWN => Some(Event::MouseDown(button)),
+                        msg::WM_LBUTTONUP
+                        | msg::WM_MBUTTONUP
+                        | msg::WM_RBUTTONUP
+                        | msg::WM_XBUTTONUP => Some(Event::MouseUp(button)),
+                        _ => None,
+                    };
+
+                    if let Some(event) = event {
+                        match event {
+                            Event::MouseDown(_) => {
+                                state.mouse_down_count.set(state.mouse_down_count.get() + 1);
+                                if state.mouse_down_count.get() == 1 {
+                                    SetCapture(hwnd);
+                                }
+                            }
+                            Event::MouseUp(_) => {
+                                state.mouse_down_count.set(state.mouse_down_count.get() - 1);
+                                if state.mouse_down_count.get() == 0 {
+                                    let _ = ReleaseCapture();
+                                }
+                            }
+                            _ => {}
+                        }
+
+                        if state.handle_event(event) == Some(Response::Capture) {
+                            return LRESULT(0);
+                        }
+                    }
+                }
+            }
+            msg::WM_MOUSEWHEEL | msg::WM_MOUSEHWHEEL => {
+                let delta = GET_WHEEL_DELTA_WPARAM(wparam) as f64 / 120.0;
+                let point = match msg {
+                    msg::WM_MOUSEWHEEL => Point::new(0.0, delta),
+                    msg::WM_MOUSEHWHEEL => Point::new(delta, 0.0),
+                    _ => unreachable!(),
+                };
+
+                if state.handle_event(Event::Scroll(point)) == Some(Response::Capture) {
+                    return LRESULT(0);
+                }
+            }
+            msg::WM_CLOSE => {
+                state.handle_event(Event::Close);
+                return LRESULT(0);
+            }
+            msg::WM_DESTROY => {
+                drop(Rc::from_raw(state_ptr));
+                SetWindowLongPtrW(hwnd, msg::GWLP_USERDATA, 0);
+            }
+            _ => {}
+        }
+    }
+
+    DefWindowProcW(hwnd, msg, wparam, lparam)
 }
 
 struct WindowState {
@@ -351,162 +537,4 @@ impl Drop for WindowInner {
             let _ = DestroyWindow(self.hwnd);
         }
     }
-}
-
-pub unsafe extern "system" fn wnd_proc(
-    hwnd: HWND,
-    msg: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
-    let state_ptr = GetWindowLongPtrW(hwnd, msg::GWLP_USERDATA) as *const WindowState;
-    if !state_ptr.is_null() {
-        // Hold a reference to the WindowState for the duration of the wnd_proc, in case the
-        // window is closed during an event handler
-        let state_rc = Rc::from_raw(state_ptr);
-        let state = Rc::clone(&state_rc);
-        let _ = Rc::into_raw(state_rc);
-
-        match msg {
-            msg::WM_SETCURSOR => {
-                if LOWORD(lparam.0 as u32) == msg::HTCLIENT as u16 {
-                    state.update_cursor();
-                    return LRESULT(0);
-                }
-            }
-            msg::WM_ERASEBKGND => {
-                return LRESULT(1);
-            }
-            msg::WM_PAINT => {
-                let mut rects = Vec::new();
-
-                let rgn = gdi::CreateRectRgn(0, 0, 0, 0);
-                gdi::GetUpdateRgn(hwnd, rgn, false);
-                let size = gdi::GetRegionData(rgn, 0, None);
-                if size != 0 {
-                    let align = mem::align_of::<gdi::RGNDATA>();
-                    let layout = Layout::from_size_align(size as usize, align).unwrap();
-                    let ptr = alloc(layout) as *mut gdi::RGNDATA;
-
-                    let result = gdi::GetRegionData(rgn, size, Some(ptr));
-                    if result == size {
-                        let count = (*ptr).rdh.nCount as usize;
-
-                        let buffer_ptr = ptr::addr_of!((*ptr).Buffer) as *const RECT;
-                        let buffer = slice::from_raw_parts(buffer_ptr, count);
-
-                        rects.reserve_exact(count);
-                        for rect in buffer {
-                            rects.push(Rect {
-                                x: rect.left as f64,
-                                y: rect.top as f64,
-                                width: (rect.right - rect.left) as f64,
-                                height: (rect.bottom - rect.top) as f64,
-                            });
-                        }
-                    }
-
-                    dealloc(ptr as *mut u8, layout);
-                }
-                gdi::DeleteObject(rgn);
-
-                // Only validate the dirty region if we successfully invoked the event handler.
-                // This ensures that if we receive an expose event during the App::new builder
-                // callback, we will receive it again later.
-                if state.handle_event(Event::Expose(&rects)).is_some() {
-                    gdi::ValidateRgn(hwnd, gdi::HRGN(0));
-                }
-
-                return LRESULT(0);
-            }
-            msg::WM_MOUSEMOVE => {
-                let point = Point {
-                    x: GET_X_LPARAM(lparam) as f64,
-                    y: GET_Y_LPARAM(lparam) as f64,
-                };
-                state.handle_event(Event::MouseMove(point));
-
-                return LRESULT(0);
-            }
-            msg::WM_LBUTTONDOWN
-            | msg::WM_LBUTTONUP
-            | msg::WM_MBUTTONDOWN
-            | msg::WM_MBUTTONUP
-            | msg::WM_RBUTTONDOWN
-            | msg::WM_RBUTTONUP
-            | msg::WM_XBUTTONDOWN
-            | msg::WM_XBUTTONUP => {
-                let button = match msg {
-                    msg::WM_LBUTTONDOWN | msg::WM_LBUTTONUP => Some(MouseButton::Left),
-                    msg::WM_MBUTTONDOWN | msg::WM_MBUTTONUP => Some(MouseButton::Middle),
-                    msg::WM_RBUTTONDOWN | msg::WM_RBUTTONUP => Some(MouseButton::Right),
-                    msg::WM_XBUTTONDOWN | msg::WM_XBUTTONUP => match GET_XBUTTON_WPARAM(wparam) {
-                        msg::XBUTTON1 => Some(MouseButton::Back),
-                        msg::XBUTTON2 => Some(MouseButton::Forward),
-                        _ => None,
-                    },
-                    _ => None,
-                };
-
-                if let Some(button) = button {
-                    let event = match msg {
-                        msg::WM_LBUTTONDOWN
-                        | msg::WM_MBUTTONDOWN
-                        | msg::WM_RBUTTONDOWN
-                        | msg::WM_XBUTTONDOWN => Some(Event::MouseDown(button)),
-                        msg::WM_LBUTTONUP
-                        | msg::WM_MBUTTONUP
-                        | msg::WM_RBUTTONUP
-                        | msg::WM_XBUTTONUP => Some(Event::MouseUp(button)),
-                        _ => None,
-                    };
-
-                    if let Some(event) = event {
-                        match event {
-                            Event::MouseDown(_) => {
-                                state.mouse_down_count.set(state.mouse_down_count.get() + 1);
-                                if state.mouse_down_count.get() == 1 {
-                                    SetCapture(hwnd);
-                                }
-                            }
-                            Event::MouseUp(_) => {
-                                state.mouse_down_count.set(state.mouse_down_count.get() - 1);
-                                if state.mouse_down_count.get() == 0 {
-                                    let _ = ReleaseCapture();
-                                }
-                            }
-                            _ => {}
-                        }
-
-                        if state.handle_event(event) == Some(Response::Capture) {
-                            return LRESULT(0);
-                        }
-                    }
-                }
-            }
-            msg::WM_MOUSEWHEEL | msg::WM_MOUSEHWHEEL => {
-                let delta = GET_WHEEL_DELTA_WPARAM(wparam) as f64 / 120.0;
-                let point = match msg {
-                    msg::WM_MOUSEWHEEL => Point::new(0.0, delta),
-                    msg::WM_MOUSEHWHEEL => Point::new(delta, 0.0),
-                    _ => unreachable!(),
-                };
-
-                if state.handle_event(Event::Scroll(point)) == Some(Response::Capture) {
-                    return LRESULT(0);
-                }
-            }
-            msg::WM_CLOSE => {
-                state.handle_event(Event::Close);
-                return LRESULT(0);
-            }
-            msg::WM_DESTROY => {
-                drop(Rc::from_raw(state_ptr));
-                SetWindowLongPtrW(hwnd, msg::GWLP_USERDATA, 0);
-            }
-            _ => {}
-        }
-    }
-
-    DefWindowProcW(hwnd, msg, wparam, lparam)
 }
