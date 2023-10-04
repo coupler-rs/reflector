@@ -239,7 +239,7 @@ pub unsafe extern "system" fn wnd_proc(
     DefWindowProcW(hwnd, msg, wparam, lparam)
 }
 
-struct WindowState {
+pub struct WindowState {
     mouse_down_count: Cell<isize>,
     cursor: Cell<Cursor>,
     app_state: Rc<AppState>,
@@ -374,6 +374,8 @@ impl WindowInner {
 
             let state_ptr = Rc::into_raw(Rc::clone(&state));
             SetWindowLongPtrW(hwnd, msg::GWLP_USERDATA, state_ptr as isize);
+
+            cx.inner.state.windows.borrow_mut().insert(hwnd.0, Rc::clone(&state));
 
             Ok(WindowInner { hwnd, state })
         }
@@ -533,6 +535,8 @@ impl WindowInner {
 
 impl Drop for WindowInner {
     fn drop(&mut self) {
+        self.state.app_state.windows.borrow_mut().remove(&self.hwnd.0);
+
         unsafe {
             let _ = DestroyWindow(self.hwnd);
         }

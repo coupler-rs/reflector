@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
@@ -19,7 +20,7 @@ use super::{class_name, hinstance, to_wstring};
 
 use super::dpi::DpiFns;
 use super::timer::{TimerHandleInner, Timers};
-use super::window;
+use super::window::{self, WindowState};
 use crate::{App, AppContext, AppMode, AppOptions, Error, IntoInnerError, Result};
 
 fn register_message_class() -> Result<PCWSTR> {
@@ -85,6 +86,7 @@ pub struct AppState {
     pub window_class: PCWSTR,
     pub dpi: DpiFns,
     pub timers: Timers,
+    pub windows: RefCell<HashMap<isize, Rc<WindowState>>>,
     pub data: RefCell<Option<Box<dyn Any>>>,
 }
 
@@ -149,6 +151,7 @@ impl<T: 'static> AppInner<T> {
             window_class,
             dpi,
             timers,
+            windows: RefCell::new(HashMap::new()),
             data: RefCell::new(None),
         });
 
