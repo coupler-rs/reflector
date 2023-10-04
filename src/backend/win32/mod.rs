@@ -4,10 +4,12 @@ use std::os::windows::ffi::OsStrExt;
 
 use windows::Win32::Foundation::HINSTANCE;
 use windows::Win32::System::SystemServices::IMAGE_DOS_HEADER;
+use windows::Win32::UI::WindowsAndMessaging::WM_USER;
 
 mod app;
 mod dpi;
 mod timer;
+mod vsync;
 mod window;
 
 pub use app::{AppContextInner, AppInner};
@@ -15,6 +17,8 @@ pub use timer::TimerHandleInner;
 pub use window::WindowInner;
 
 use crate::Error;
+
+const WM_USER_VBLANK: u32 = WM_USER;
 
 fn hinstance() -> HINSTANCE {
     extern "C" {

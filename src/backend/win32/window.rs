@@ -269,7 +269,7 @@ impl WindowState {
         }
     }
 
-    fn handle_event(&self, event: Event) -> Option<Response> {
+    pub fn handle_event(&self, event: Event) -> Option<Response> {
         if let Ok(mut handler) = self.handler.try_borrow_mut() {
             if let Ok(mut data) = self.app_state.data.try_borrow_mut() {
                 if let Some(data) = &mut *data {

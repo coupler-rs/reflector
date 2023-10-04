@@ -8,7 +8,7 @@ use std::{mem, ptr, result};
 
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
-use windows::Win32::Graphics::Gdi::HBRUSH;
+use windows::Win32::Graphics::Gdi::{HBRUSH, HMONITOR};
 use windows::Win32::UI::WindowsAndMessaging::{
     self as msg, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW,
     GetWindowLongPtrW, PeekMessageW, PostQuitMessage, RegisterClassW, SetWindowLongPtrW,
@@ -16,11 +16,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WNDCLASSW, WNDCLASS_STYLES,
 };
 
-use super::{class_name, hinstance, to_wstring};
-
 use super::dpi::DpiFns;
 use super::timer::{TimerHandleInner, Timers};
+use super::vsync::VsyncThreads;
 use super::window::{self, WindowState};
+use super::{class_name, hinstance, to_wstring, WM_USER_VBLANK};
 use crate::{App, AppContext, AppMode, AppOptions, Error, IntoInnerError, Result};
 
 fn register_message_class() -> Result<PCWSTR> {
@@ -69,6 +69,11 @@ pub unsafe extern "system" fn message_wnd_proc(
                     app_state.timers.handle_timer(&app_state, wparam.0);
                 }
             }
+            WM_USER_VBLANK => {
+                if let Some(app_state) = app_state.upgrade() {
+                    app_state.vsync_threads.handle_vblank(&app_state, HMONITOR(lparam.0));
+                }
+            }
             msg::WM_DESTROY => {
                 drop(Weak::from_raw(app_state_ptr));
                 SetWindowLongPtrW(hwnd, msg::GWLP_USERDATA, 0);
@@ -86,6 +91,7 @@ pub struct AppState {
     pub window_class: PCWSTR,
     pub dpi: DpiFns,
     pub timers: Timers,
+    pub vsync_threads: VsyncThreads,
     pub windows: RefCell<HashMap<isize, Rc<WindowState>>>,
     pub data: RefCell<Option<Box<dyn Any>>>,
 }
@@ -93,6 +99,7 @@ pub struct AppState {
 impl Drop for AppState {
     fn drop(&mut self) {
         self.timers.kill_timers(&self);
+        self.vsync_threads.join_all();
 
         unsafe {
             window::unregister_class(self.window_class);
@@ -145,12 +152,15 @@ impl<T: 'static> AppInner<T> {
 
         let timers = Timers::new();
 
+        let vsync_threads = VsyncThreads::new();
+
         let state = Rc::new(AppState {
             message_class,
             message_hwnd,
             window_class,
             dpi,
             timers,
+            vsync_threads,
             windows: RefCell::new(HashMap::new()),
             data: RefCell::new(None),
         });
@@ -159,6 +169,8 @@ impl<T: 'static> AppInner<T> {
         unsafe {
             SetWindowLongPtrW(message_hwnd, msg::GWLP_USERDATA, state_ptr as isize);
         }
+
+        state.vsync_threads.init(&state);
 
         let cx = AppContext::from_inner(AppContextInner {
             state: &state,
