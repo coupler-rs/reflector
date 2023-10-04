@@ -147,8 +147,6 @@ impl<T: 'static> AppInner<T> {
                 -1
             };
 
-            println!("poll");
-
             unsafe {
                 libc::poll(fds.as_mut_ptr(), fds.len() as u64, timeout);
             }
