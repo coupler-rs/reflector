@@ -13,7 +13,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
 use windows::Win32::UI::WindowsAndMessaging::{
     self as msg, AdjustWindowRectEx, CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect,
     GetWindowLongPtrW, LoadCursorW, RegisterClassW, SetCursor, SetCursorPos, SetWindowLongPtrW,
-    ShowWindow, UnregisterClassW, HCURSOR, HICON, HMENU, WINDOW_EX_STYLE, WNDCLASSW,
+    ShowWindow, UnregisterClassW, CREATESTRUCTW, HCURSOR, HICON, HMENU, WINDOW_EX_STYLE, WNDCLASSW,
 };
 
 use super::app::{AppContextInner, AppState};
@@ -87,6 +87,18 @@ pub unsafe extern "system" fn wnd_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    if msg == msg::WM_NCCREATE {
+        let create_struct = &*(lparam.0 as *const CREATESTRUCTW);
+        let app_state = &*(create_struct.lpCreateParams as *const AppState);
+
+        #[allow(non_snake_case)]
+        if let Some(EnableNonClientDpiScaling) = app_state.dpi.EnableNonClientDpiScaling {
+            EnableNonClientDpiScaling(hwnd);
+        }
+
+        return DefWindowProcW(hwnd, msg, wparam, lparam);
+    }
+
     let state_ptr = GetWindowLongPtrW(hwnd, msg::GWLP_USERDATA) as *const WindowState;
     if !state_ptr.is_null() {
         // Hold a reference to the WindowState for the duration of the wnd_proc, in case the
@@ -351,7 +363,7 @@ impl WindowInner {
                 parent,
                 HMENU(0),
                 hinstance(),
-                None,
+                Some(Rc::as_ptr(cx.inner.state) as *const c_void),
             );
             if hwnd == HWND(0) {
                 return Err(windows::core::Error::from_win32().into());
