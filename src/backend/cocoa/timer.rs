@@ -126,13 +126,14 @@ impl Drop for Timers {
     }
 }
 
+#[derive(Clone)]
 pub struct TimerInner {
     app_state: Weak<AppState>,
     timer: CFRunLoopTimerRef,
 }
 
 impl TimerInner {
-    pub fn cancel(self) {
+    pub fn cancel(&self) {
         if let Some(app_state) = self.app_state.upgrade() {
             if app_state.timers.timers.borrow_mut().remove(&self.timer) {
                 unsafe {

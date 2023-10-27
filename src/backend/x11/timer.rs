@@ -125,13 +125,14 @@ impl Timers {
     }
 }
 
+#[derive(Clone)]
 pub struct TimerInner {
     app_state: Weak<AppState>,
     timer_id: TimerId,
 }
 
 impl TimerInner {
-    pub fn cancel(self) {
+    pub fn cancel(&self) {
         if let Some(app_state) = self.app_state.upgrade() {
             app_state.timers.timers.borrow_mut().remove(&self.timer_id);
         }

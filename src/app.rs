@@ -4,6 +4,7 @@ use std::{fmt, result};
 
 use crate::{backend, IntoInnerError, Result};
 
+#[derive(Clone)]
 pub struct Timer {
     inner: backend::TimerInner,
     // ensure !Send and !Sync on all platforms
@@ -11,7 +12,7 @@ pub struct Timer {
 }
 
 impl Timer {
-    pub fn cancel(self) {
+    pub fn cancel(&self) {
         self.inner.cancel();
     }
 }
