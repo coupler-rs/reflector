@@ -8,7 +8,7 @@ mod timer;
 mod window;
 
 pub use app::{AppContextInner, AppInner};
-pub use timer::TimerHandleInner;
+pub use timer::TimerInner;
 pub use window::WindowInner;
 
 #[derive(Debug)]

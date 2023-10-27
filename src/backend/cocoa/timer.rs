@@ -60,7 +60,7 @@ impl Timers {
         app_state: &Rc<AppState>,
         duration: Duration,
         handler: H,
-    ) -> TimerHandleInner
+    ) -> TimerInner
     where
         T: 'static,
         H: 'static,
@@ -108,7 +108,7 @@ impl Timers {
             CFRunLoopAddTimer(run_loop, timer, kCFRunLoopCommonModes);
         }
 
-        TimerHandleInner {
+        TimerInner {
             app_state: Rc::downgrade(app_state),
             timer,
         }
@@ -126,12 +126,12 @@ impl Drop for Timers {
     }
 }
 
-pub struct TimerHandleInner {
+pub struct TimerInner {
     app_state: Weak<AppState>,
     timer: CFRunLoopTimerRef,
 }
 
-impl TimerHandleInner {
+impl TimerInner {
     pub fn cancel(self) {
         if let Some(app_state) = self.app_state.upgrade() {
             if app_state.timers.timers.borrow_mut().remove(&self.timer) {

@@ -14,7 +14,7 @@ use icrate::AppKit::{NSApplication, NSApplicationActivationPolicyRegular, NSCurs
 use icrate::Foundation::{NSPoint, NSSize, NSThread};
 
 use super::display_links::DisplayLinks;
-use super::timer::{TimerHandleInner, Timers};
+use super::timer::{TimerInner, Timers};
 use super::window::View;
 use crate::{App, AppContext, AppMode, AppOptions, Error, IntoInnerError, Result};
 
@@ -149,7 +149,7 @@ impl<'a, T: 'static> AppContextInner<'a, T> {
         }
     }
 
-    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerHandleInner
+    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerInner
     where
         H: 'static,
         H: FnMut(&mut T, &AppContext<T>),

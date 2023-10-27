@@ -12,7 +12,7 @@ use x11rb::protocol::{shm, xproto};
 use x11rb::rust_connection::RustConnection;
 use x11rb::{cursor, protocol, resource_manager};
 
-use super::timer::{TimerHandleInner, Timers};
+use super::timer::{TimerInner, Timers};
 use super::window::WindowState;
 use crate::{
     App, AppContext, AppOptions, Cursor, Event, IntoInnerError, MouseButton, Point, Rect, Result,
@@ -274,7 +274,7 @@ impl<'a, T: 'static> AppContextInner<'a, T> {
         }
     }
 
-    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerHandleInner
+    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerInner
     where
         H: 'static,
         H: FnMut(&mut T, &AppContext<T>),

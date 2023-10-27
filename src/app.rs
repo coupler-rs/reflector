@@ -4,21 +4,21 @@ use std::{fmt, result};
 
 use crate::{backend, IntoInnerError, Result};
 
-pub struct TimerHandle {
-    inner: backend::TimerHandleInner,
+pub struct Timer {
+    inner: backend::TimerInner,
     // ensure !Send and !Sync on all platforms
     _marker: PhantomData<*mut ()>,
 }
 
-impl TimerHandle {
+impl Timer {
     pub fn cancel(self) {
         self.inner.cancel();
     }
 }
 
-impl fmt::Debug for TimerHandle {
+impl fmt::Debug for Timer {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_struct("TimerHandle").finish_non_exhaustive()
+        fmt.debug_struct("Timer").finish_non_exhaustive()
     }
 }
 
@@ -117,12 +117,12 @@ impl<'a, T: 'static> AppContext<'a, T> {
         }
     }
 
-    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerHandle
+    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> Timer
     where
         H: 'static,
         H: FnMut(&mut T, &AppContext<T>),
     {
-        TimerHandle {
+        Timer {
             inner: self.inner.set_timer(duration, handler),
             _marker: PhantomData,
         }

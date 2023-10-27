@@ -5,5 +5,5 @@ mod window;
 
 pub use app::{AppContextInner, AppInner};
 pub use error::OsError;
-pub use timer::TimerHandleInner;
+pub use timer::TimerInner;
 pub use window::WindowInner;

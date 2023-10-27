@@ -17,7 +17,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use super::dpi::DpiFns;
-use super::timer::{TimerHandleInner, Timers};
+use super::timer::{TimerInner, Timers};
 use super::vsync::VsyncThreads;
 use super::window::{self, WindowState};
 use super::{class_name, hinstance, to_wstring, WM_USER_VBLANK};
@@ -263,7 +263,7 @@ impl<'a, T: 'static> AppContextInner<'a, T> {
         }
     }
 
-    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerHandleInner
+    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerInner
     where
         H: 'static,
         H: FnMut(&mut T, &AppContext<T>),
