@@ -73,7 +73,7 @@ impl Drop for AppState {
 
 pub struct AppInner<T> {
     state: Rc<AppState>,
-    data: Box<T>,
+    data: Option<T>,
 }
 
 impl<T: 'static> AppInner<T> {
@@ -114,7 +114,7 @@ impl<T: 'static> AppInner<T> {
 
         let inner = AppInner {
             state,
-            data: Box::new(data),
+            data: Some(data),
         };
 
         Ok(inner)
@@ -127,7 +127,7 @@ impl<T: 'static> AppInner<T> {
 
         while self.state.running.get() {
             self.drain_events()?;
-            self.state.timers.poll(&mut *self.data, &self.state);
+            self.state.timers.poll(self.data.as_mut().unwrap(), &self.state);
             self.drain_events()?;
 
             if !self.state.running.get() {
@@ -159,7 +159,7 @@ impl<T: 'static> AppInner<T> {
 
     pub fn poll(&mut self) -> Result<()> {
         self.drain_events()?;
-        self.state.timers.poll(&mut *self.data, &self.state);
+        self.state.timers.poll(self.data.as_mut().unwrap(), &self.state);
         self.drain_events()?;
 
         Ok(())
@@ -181,7 +181,7 @@ impl<T: 'static> AppInner<T> {
                         if event.count == 0 {
                             let rects = window.expose_rects.take();
                             window.handler.borrow_mut()(
-                                &mut *self.data,
+                                self.data.as_mut().unwrap(),
                                 &self.state,
                                 Event::Expose(&rects),
                             );
@@ -194,7 +194,11 @@ impl<T: 'static> AppInner<T> {
                     {
                         let window = self.state.windows.borrow().get(&event.window).cloned();
                         if let Some(window) = window {
-                            window.handler.borrow_mut()(&mut *self.data, &self.state, Event::Close);
+                            window.handler.borrow_mut()(
+                                self.data.as_mut().unwrap(),
+                                &self.state,
+                                Event::Close,
+                            );
                         }
                     }
                 }
@@ -207,7 +211,7 @@ impl<T: 'static> AppInner<T> {
                         };
 
                         window.handler.borrow_mut()(
-                            &mut *self.data,
+                            self.data.as_mut().unwrap(),
                             &self.state,
                             Event::MouseMove(point),
                         );
@@ -218,13 +222,13 @@ impl<T: 'static> AppInner<T> {
                     if let Some(window) = window {
                         if let Some(button) = mouse_button_from_code(event.detail) {
                             window.handler.borrow_mut()(
-                                &mut *self.data,
+                                self.data.as_mut().unwrap(),
                                 &self.state,
                                 Event::MouseDown(button),
                             );
                         } else if let Some(delta) = scroll_delta_from_code(event.detail) {
                             window.handler.borrow_mut()(
-                                &mut *self.data,
+                                self.data.as_mut().unwrap(),
                                 &self.state,
                                 Event::Scroll(delta),
                             );
@@ -236,7 +240,7 @@ impl<T: 'static> AppInner<T> {
                     if let Some(window) = window {
                         if let Some(button) = mouse_button_from_code(event.detail) {
                             window.handler.borrow_mut()(
-                                &mut *self.data,
+                                self.data.as_mut().unwrap(),
                                 &self.state,
                                 Event::MouseUp(button),
                             );
@@ -250,8 +254,17 @@ impl<T: 'static> AppInner<T> {
         Ok(())
     }
 
-    pub fn into_inner(self) -> result::Result<T, IntoInnerError<App<T>>> {
-        Ok(*self.data)
+    pub fn into_inner(mut self) -> result::Result<T, IntoInnerError<App<T>>> {
+        Ok(self.data.take().unwrap())
+    }
+}
+
+impl<T> Drop for AppInner<T> {
+    fn drop(&mut self) {
+        for window_state in self.state.windows.take().into_values() {
+            window_state.close();
+        }
+        let _ = self.state.connection.flush();
     }
 }
 

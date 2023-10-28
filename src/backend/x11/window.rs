@@ -1,5 +1,5 @@
 use std::any::Any;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::ffi::{c_int, c_void};
 use std::rc::Rc;
 use std::{mem, ptr, slice};
@@ -28,8 +28,8 @@ pub struct ShmState {
 }
 
 pub struct WindowState {
-    pub window_id: Window,
-    pub gc_id: Gcontext,
+    pub window_id: Cell<Option<Window>>,
+    pub gc_id: Cell<Option<Gcontext>>,
     pub shm_state: RefCell<Option<ShmState>>,
     pub expose_rects: RefCell<Vec<Rect>>,
     pub app_state: Rc<AppState>,
@@ -91,17 +91,18 @@ impl WindowState {
             }
         }
     }
-}
 
-impl Drop for WindowState {
-    fn drop(&mut self) {
+    pub fn close(&self) {
+        if let Some(window_id) = self.window_id.take() {
+            self.app_state.windows.borrow_mut().remove(&window_id);
+            let _ = self.app_state.connection.destroy_window(window_id);
+        }
+
         self.deinit_shm();
-
-        let _ = self.app_state.connection.destroy_window(self.window_id);
-        let _ = self.app_state.connection.flush();
     }
 }
 
+#[derive(Clone)]
 pub struct WindowInner {
     state: Rc<WindowState>,
 }
@@ -195,8 +196,8 @@ impl WindowInner {
             };
 
         let state = Rc::new(WindowState {
-            window_id,
-            gc_id,
+            window_id: Cell::new(Some(window_id)),
+            gc_id: Cell::new(Some(gc_id)),
             shm_state: RefCell::new(shm_state),
             expose_rects: RefCell::new(Vec::new()),
             app_state: Rc::clone(&cx.inner.state),
@@ -209,13 +210,17 @@ impl WindowInner {
     }
 
     pub fn show(&self) {
-        let _ = self.state.app_state.connection.map_window(self.state.window_id);
-        let _ = self.state.app_state.connection.flush();
+        if let Some(window_id) = self.state.window_id.get() {
+            let _ = self.state.app_state.connection.map_window(window_id);
+            let _ = self.state.app_state.connection.flush();
+        }
     }
 
     pub fn hide(&self) {
-        let _ = self.state.app_state.connection.unmap_window(self.state.window_id);
-        let _ = self.state.app_state.connection.flush();
+        if let Some(window_id) = self.state.window_id.get() {
+            let _ = self.state.app_state.connection.unmap_window(window_id);
+            let _ = self.state.app_state.connection.flush();
+        }
     }
 
     pub fn size(&self) -> Size {
@@ -223,7 +228,9 @@ impl WindowInner {
     }
 
     fn size_inner(&self) -> Result<Size> {
-        let geom = self.state.app_state.connection.get_geometry(self.state.window_id)?.reply()?;
+        let window_id = self.state.window_id.get().ok_or(Error::WindowClosed)?;
+        let geom = self.state.app_state.connection.get_geometry(window_id)?.reply()?;
+
         Ok(Size::new(geom.width as f64, geom.height as f64))
     }
 
@@ -241,6 +248,8 @@ impl WindowInner {
 
     fn present_inner(&self, bitmap: Bitmap, rects: Option<&[Rect]>) -> Result<()> {
         let connection = &self.state.app_state.connection;
+        let window_id = self.state.window_id.get().ok_or(Error::WindowClosed)?;
+        let gc_id = self.state.gc_id.get().ok_or(Error::WindowClosed)?;
 
         if let Some(rects) = rects {
             let mut x_rects = Vec::with_capacity(rects.len());
@@ -253,13 +262,7 @@ impl WindowInner {
                 });
             }
 
-            connection.set_clip_rectangles(
-                ClipOrdering::UNSORTED,
-                self.state.gc_id,
-                0,
-                0,
-                &x_rects,
-            )?;
+            connection.set_clip_rectangles(ClipOrdering::UNSORTED, gc_id, 0, 0, &x_rects)?;
         }
 
         if let Some(ref shm_state) = *self.state.shm_state.borrow() {
@@ -280,8 +283,8 @@ impl WindowInner {
             }
 
             connection.shm_put_image(
-                self.state.window_id,
-                self.state.gc_id,
+                window_id,
+                gc_id,
                 shm_state.width as u16,
                 shm_state.height as u16,
                 0,
@@ -300,8 +303,8 @@ impl WindowInner {
             let (_, bytes, _) = unsafe { bitmap.data().align_to::<u8>() };
             connection.put_image(
                 ImageFormat::Z_PIXMAP,
-                self.state.window_id,
-                self.state.gc_id,
+                window_id,
+                gc_id,
                 bitmap.width() as u16,
                 bitmap.height() as u16,
                 0,
@@ -313,7 +316,7 @@ impl WindowInner {
         }
 
         if rects.is_some() {
-            connection.set_clip_rectangles(ClipOrdering::UNSORTED, self.state.gc_id, 0, 0, &[])?;
+            connection.set_clip_rectangles(ClipOrdering::UNSORTED, gc_id, 0, 0, &[])?;
         }
 
         connection.flush()?;
@@ -328,6 +331,7 @@ impl WindowInner {
     fn set_cursor_inner(&self, cursor: Cursor) -> Result<()> {
         let connection = &self.state.app_state.connection;
         let cursor_cache = &self.state.app_state.cursor_cache;
+        let window_id = self.state.window_id.get().ok_or(Error::WindowClosed)?;
 
         let cursor_id = if let Some(cursor_id) = cursor_cache.borrow_mut().get(&cursor) {
             *cursor_id
@@ -361,7 +365,7 @@ impl WindowInner {
         };
 
         connection.change_window_attributes(
-            self.state.window_id,
+            window_id,
             &ChangeWindowAttributesAux::new().cursor(cursor_id),
         )?;
         self.state.app_state.connection.flush()?;
@@ -370,22 +374,23 @@ impl WindowInner {
     }
 
     pub fn set_mouse_position(&self, position: Point) {
-        let _ = self.state.app_state.connection.warp_pointer(
-            x11rb::NONE,
-            self.state.window_id,
-            0,
-            0,
-            0,
-            0,
-            position.x.round() as i16,
-            position.y.round() as i16,
-        );
-        let _ = self.state.app_state.connection.flush();
+        if let Some(window_id) = self.state.window_id.get() {
+            let _ = self.state.app_state.connection.warp_pointer(
+                x11rb::NONE,
+                window_id,
+                0,
+                0,
+                0,
+                0,
+                position.x.round() as i16,
+                position.y.round() as i16,
+            );
+            let _ = self.state.app_state.connection.flush();
+        }
     }
-}
 
-impl Drop for WindowInner {
-    fn drop(&mut self) {
-        self.state.app_state.windows.borrow_mut().remove(&self.state.window_id);
+    pub fn close(&self) {
+        self.state.close();
+        let _ = self.state.app_state.connection.flush();
     }
 }
