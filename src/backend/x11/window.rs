@@ -98,6 +98,10 @@ impl WindowState {
             let _ = self.app_state.connection.destroy_window(window_id);
         }
 
+        if let Some(gc_id) = self.gc_id.take() {
+            let _ = self.app_state.connection.free_gc(gc_id);
+        }
+
         self.deinit_shm();
     }
 }
