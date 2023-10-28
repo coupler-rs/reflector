@@ -252,6 +252,7 @@ pub unsafe extern "system" fn wnd_proc(
 }
 
 pub struct WindowState {
+    hwnd: Cell<Option<HWND>>,
     mouse_down_count: Cell<isize>,
     cursor: Cell<Cursor>,
     app_state: Rc<AppState>,
@@ -292,10 +293,16 @@ impl WindowState {
 
         None
     }
+
+    pub fn close(&self) {
+        if let Some(hwnd) = self.hwnd.take() {
+            let _ = unsafe { DestroyWindow(hwnd) };
+        }
+    }
 }
 
+#[derive(Clone)]
 pub struct WindowInner {
-    hwnd: HWND,
     state: Rc<WindowState>,
 }
 
@@ -378,6 +385,7 @@ impl WindowInner {
                 };
 
             let state = Rc::new(WindowState {
+                hwnd: Cell::new(Some(hwnd)),
                 mouse_down_count: Cell::new(0),
                 cursor: Cell::new(Cursor::Arrow),
                 app_state: Rc::clone(cx.inner.state),
@@ -389,43 +397,51 @@ impl WindowInner {
 
             cx.inner.state.windows.borrow_mut().insert(hwnd.0, Rc::clone(&state));
 
-            Ok(WindowInner { hwnd, state })
+            Ok(WindowInner { state })
         }
     }
 
     pub fn show(&self) {
-        unsafe {
-            ShowWindow(self.hwnd, msg::SW_SHOWNORMAL);
+        if let Some(hwnd) = self.state.hwnd.get() {
+            unsafe { ShowWindow(hwnd, msg::SW_SHOWNORMAL) };
         }
     }
 
     pub fn hide(&self) {
-        unsafe {
-            ShowWindow(self.hwnd, msg::SW_HIDE);
+        if let Some(hwnd) = self.state.hwnd.get() {
+            unsafe { ShowWindow(hwnd, msg::SW_HIDE) };
         }
     }
 
     pub fn size(&self) -> Size {
-        let mut rect = RECT {
-            left: 0,
-            top: 0,
-            right: 0,
-            bottom: 0,
-        };
-        unsafe {
-            let _ = GetClientRect(self.hwnd, &mut rect);
-        }
+        if let Some(hwnd) = self.state.hwnd.get() {
+            let mut rect = RECT {
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            };
+            unsafe {
+                let _ = GetClientRect(hwnd, &mut rect);
+            }
 
-        Size::new(
-            (rect.right - rect.left) as f64,
-            (rect.bottom - rect.top) as f64,
-        )
+            Size::new(
+                (rect.right - rect.left) as f64,
+                (rect.bottom - rect.top) as f64,
+            )
+        } else {
+            Size::new(0.0, 0.0)
+        }
     }
 
     pub fn scale(&self) -> f64 {
-        let dpi = unsafe { self.state.app_state.dpi.dpi_for_window(self.hwnd) };
+        if let Some(hwnd) = self.state.hwnd.get() {
+            let dpi = unsafe { self.state.app_state.dpi.dpi_for_window(hwnd) };
 
-        dpi as f64 / msg::USER_DEFAULT_SCREEN_DPI as f64
+            dpi as f64 / msg::USER_DEFAULT_SCREEN_DPI as f64
+        } else {
+            1.0
+        }
     }
 
     pub fn present(&self, bitmap: Bitmap) {
@@ -437,93 +453,95 @@ impl WindowInner {
     }
 
     fn present_inner(&self, bitmap: Bitmap, rects: Option<&[Rect]>) {
-        unsafe {
-            let hdc = gdi::GetDC(self.hwnd);
-            if hdc != gdi::HDC(0) {
-                if let Some(rects) = rects {
-                    let (layout, _) = Layout::new::<gdi::RGNDATAHEADER>()
-                        .extend(Layout::array::<RECT>(rects.len()).unwrap())
-                        .unwrap();
-                    let ptr = alloc(layout) as *mut gdi::RGNDATA;
+        if let Some(hwnd) = self.state.hwnd.get() {
+            unsafe {
+                let hdc = gdi::GetDC(hwnd);
+                if hdc != gdi::HDC(0) {
+                    if let Some(rects) = rects {
+                        let (layout, _) = Layout::new::<gdi::RGNDATAHEADER>()
+                            .extend(Layout::array::<RECT>(rects.len()).unwrap())
+                            .unwrap();
+                        let ptr = alloc(layout) as *mut gdi::RGNDATA;
 
-                    let buffer_ptr = ptr::addr_of!((*ptr).Buffer) as *mut MaybeUninit<RECT>;
-                    let buffer = slice::from_raw_parts_mut(buffer_ptr, rects.len());
-                    for (src, dst) in rects.iter().zip(buffer.iter_mut()) {
-                        dst.write(RECT {
-                            left: src.x.round() as i32,
-                            top: src.y.round() as i32,
-                            right: (src.x + src.width).round() as i32,
-                            bottom: (src.y + src.height).round() as i32,
-                        });
+                        let buffer_ptr = ptr::addr_of!((*ptr).Buffer) as *mut MaybeUninit<RECT>;
+                        let buffer = slice::from_raw_parts_mut(buffer_ptr, rects.len());
+                        for (src, dst) in rects.iter().zip(buffer.iter_mut()) {
+                            dst.write(RECT {
+                                left: src.x.round() as i32,
+                                top: src.y.round() as i32,
+                                right: (src.x + src.width).round() as i32,
+                                bottom: (src.y + src.height).round() as i32,
+                            });
+                        }
+
+                        let buffer = slice::from_raw_parts(buffer_ptr as *const RECT, rects.len());
+                        let bounds = if buffer.is_empty() {
+                            RECT {
+                                left: 0,
+                                top: 0,
+                                right: 0,
+                                bottom: 0,
+                            }
+                        } else {
+                            let mut bounds = buffer[0];
+                            for rect in buffer {
+                                bounds.left = bounds.left.min(rect.left);
+                                bounds.top = bounds.top.min(rect.top);
+                                bounds.right = bounds.right.max(rect.right);
+                                bounds.bottom = bounds.bottom.max(rect.bottom);
+                            }
+                            bounds
+                        };
+
+                        (*ptr).rdh = gdi::RGNDATAHEADER {
+                            dwSize: mem::size_of::<gdi::RGNDATAHEADER>() as u32,
+                            iType: gdi::RDH_RECTANGLES,
+                            nCount: rects.len() as u32,
+                            nRgnSize: layout.size() as u32,
+                            rcBound: bounds,
+                        };
+
+                        let rgn = gdi::ExtCreateRegion(None, layout.size() as u32, ptr);
+                        gdi::SelectClipRgn(hdc, rgn);
+                        gdi::DeleteObject(rgn);
+
+                        dealloc(ptr as *mut u8, layout);
                     }
 
-                    let buffer = slice::from_raw_parts(buffer_ptr as *const RECT, rects.len());
-                    let bounds = if buffer.is_empty() {
-                        RECT {
-                            left: 0,
-                            top: 0,
-                            right: 0,
-                            bottom: 0,
-                        }
-                    } else {
-                        let mut bounds = buffer[0];
-                        for rect in buffer {
-                            bounds.left = bounds.left.min(rect.left);
-                            bounds.top = bounds.top.min(rect.top);
-                            bounds.right = bounds.right.max(rect.right);
-                            bounds.bottom = bounds.bottom.max(rect.bottom);
-                        }
-                        bounds
-                    };
-
-                    (*ptr).rdh = gdi::RGNDATAHEADER {
-                        dwSize: mem::size_of::<gdi::RGNDATAHEADER>() as u32,
-                        iType: gdi::RDH_RECTANGLES,
-                        nCount: rects.len() as u32,
-                        nRgnSize: layout.size() as u32,
-                        rcBound: bounds,
-                    };
-
-                    let rgn = gdi::ExtCreateRegion(None, layout.size() as u32, ptr);
-                    gdi::SelectClipRgn(hdc, rgn);
-                    gdi::DeleteObject(rgn);
-
-                    dealloc(ptr as *mut u8, layout);
-                }
-
-                let bitmap_info = gdi::BITMAPINFO {
-                    bmiHeader: gdi::BITMAPINFOHEADER {
-                        biSize: mem::size_of::<gdi::BITMAPINFOHEADER>() as u32,
-                        biWidth: bitmap.width() as i32,
-                        biHeight: -(bitmap.height() as i32),
-                        biPlanes: 1,
-                        biBitCount: 32,
-                        biCompression: gdi::BI_RGB.0,
+                    let bitmap_info = gdi::BITMAPINFO {
+                        bmiHeader: gdi::BITMAPINFOHEADER {
+                            biSize: mem::size_of::<gdi::BITMAPINFOHEADER>() as u32,
+                            biWidth: bitmap.width() as i32,
+                            biHeight: -(bitmap.height() as i32),
+                            biPlanes: 1,
+                            biBitCount: 32,
+                            biCompression: gdi::BI_RGB.0,
+                            ..mem::zeroed()
+                        },
                         ..mem::zeroed()
-                    },
-                    ..mem::zeroed()
-                };
+                    };
 
-                gdi::SetDIBitsToDevice(
-                    hdc,
-                    0,
-                    0,
-                    bitmap.width() as u32,
-                    bitmap.height() as u32,
-                    0,
-                    0,
-                    0,
-                    bitmap.height() as u32,
-                    bitmap.data().as_ptr() as *const c_void,
-                    &bitmap_info,
-                    gdi::DIB_RGB_COLORS,
-                );
+                    gdi::SetDIBitsToDevice(
+                        hdc,
+                        0,
+                        0,
+                        bitmap.width() as u32,
+                        bitmap.height() as u32,
+                        0,
+                        0,
+                        0,
+                        bitmap.height() as u32,
+                        bitmap.data().as_ptr() as *const c_void,
+                        &bitmap_info,
+                        gdi::DIB_RGB_COLORS,
+                    );
 
-                if rects.is_some() {
-                    gdi::SelectClipRgn(hdc, gdi::HRGN(0));
+                    if rects.is_some() {
+                        gdi::SelectClipRgn(hdc, gdi::HRGN(0));
+                    }
+
+                    gdi::ReleaseDC(hwnd, hdc);
                 }
-
-                gdi::ReleaseDC(self.hwnd, hdc);
             }
         }
     }
@@ -534,23 +552,23 @@ impl WindowInner {
     }
 
     pub fn set_mouse_position(&self, position: Point) {
-        unsafe {
+        if let Some(hwnd) = self.state.hwnd.get() {
             let mut point = POINT {
                 x: position.x as c_int,
                 y: position.y as c_int,
             };
-            gdi::ClientToScreen(self.hwnd, &mut point);
-            let _ = SetCursorPos(point.x, point.y);
+            unsafe {
+                gdi::ClientToScreen(hwnd, &mut point);
+                let _ = SetCursorPos(point.x, point.y);
+            }
         }
     }
-}
 
-impl Drop for WindowInner {
-    fn drop(&mut self) {
-        self.state.app_state.windows.borrow_mut().remove(&self.hwnd.0);
-
-        unsafe {
-            let _ = DestroyWindow(self.hwnd);
+    pub fn close(&self) {
+        if let Some(hwnd) = self.state.hwnd.get() {
+            self.state.app_state.windows.borrow_mut().remove(&hwnd.0);
         }
+
+        self.state.close();
     }
 }

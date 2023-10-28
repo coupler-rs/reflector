@@ -246,6 +246,10 @@ impl<T> Drop for AppInner<T> {
     fn drop(&mut self) {
         if let Ok(mut data) = self.state.data.try_borrow_mut() {
             drop(data.take());
+
+            for window_state in self.state.windows.take().into_values() {
+                window_state.close();
+            }
         }
     }
 }
