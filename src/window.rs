@@ -198,6 +198,7 @@ impl WindowOptions {
     }
 }
 
+#[derive(Clone)]
 pub struct Window {
     inner: backend::WindowInner,
     // ensure !Send and !Sync on all platforms
@@ -242,6 +243,10 @@ impl Window {
 
     pub fn set_mouse_position(&self, position: Point) {
         self.inner.set_mouse_position(position);
+    }
+
+    pub fn close(&self) {
+        self.inner.close();
     }
 }
 
