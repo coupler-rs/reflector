@@ -15,7 +15,7 @@ use icrate::Foundation::{NSPoint, NSSize, NSThread};
 
 use super::display_links::DisplayLinks;
 use super::timer::{TimerInner, Timers};
-use super::window::View;
+use super::window::{View, WindowState};
 use crate::{App, AppContext, AppMode, AppOptions, Error, IntoInnerError, Result};
 
 pub struct AppState {
@@ -23,7 +23,7 @@ pub struct AppState {
     pub empty_cursor: Id<NSCursor>,
     pub timers: Timers,
     pub display_links: DisplayLinks,
-    pub windows: RefCell<HashMap<*const View, Id<View>>>,
+    pub windows: RefCell<HashMap<*const WindowState, Rc<WindowState>>>,
     pub data: RefCell<Option<Box<dyn Any>>>,
 }
 
@@ -131,6 +131,10 @@ impl<T> Drop for AppInner<T> {
         autoreleasepool(|_| {
             if let Ok(mut data) = self.state.data.try_borrow_mut() {
                 drop(data.take());
+
+                for window_state in self.state.windows.take().into_values() {
+                    window_state.close();
+                }
             }
         })
     }

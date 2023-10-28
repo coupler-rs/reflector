@@ -15,7 +15,7 @@ use core_foundation::runloop::*;
 
 use super::app::AppState;
 use super::ffi::display_link::*;
-use super::window::View;
+use super::window::{View, WindowState};
 use crate::Event;
 
 fn display_from_screen(screen: &NSScreen) -> Option<CGDirectDisplayID> {
@@ -68,12 +68,15 @@ extern "C" fn perform(info: *const c_void) {
     let state = unsafe { &*(info as *mut DisplayState) };
 
     if let Some(app_state) = state.app_state.upgrade() {
-        let windows: Vec<*const View> = app_state.windows.borrow().keys().copied().collect();
-        for view_ptr in windows {
-            let view = app_state.windows.borrow().get(&view_ptr).map(|w| w.retain());
-            if let Some(view) = view {
-                if display_from_view(&*view) == Some(state.display_id) {
-                    view.state().handle_event(Event::Frame);
+        let windows: Vec<*const WindowState> = app_state.windows.borrow().keys().copied().collect();
+        for ptr in windows {
+            let window_state = app_state.windows.borrow().get(&ptr).cloned();
+            if let Some(window_state) = window_state {
+                if let Some(view) = window_state.view() {
+                    let display = display_from_view(&*view);
+                    if display == Some(state.display_id) {
+                        window_state.handle_event(Event::Frame);
+                    }
                 }
             }
         }

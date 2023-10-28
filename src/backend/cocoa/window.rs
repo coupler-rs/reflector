@@ -171,15 +171,6 @@ impl View {
         unsafe { &*(self.state.get() as *const WindowState) }
     }
 
-    fn new(state: Box<WindowState>, frame: NSRect) -> Id<View> {
-        let view: Option<Allocated<View>> = unsafe { msg_send_id![state.app_state.class, alloc] };
-        let view: Id<View> = unsafe { msg_send_id![view, initWithFrame: frame] };
-
-        view.state.set(Box::into_raw(state) as *mut c_void);
-
-        view
-    }
-
     pub fn retain(&self) -> Id<View> {
         unsafe { Id::retain(self as *const View as *mut View) }.unwrap()
     }
@@ -292,13 +283,15 @@ impl View {
     }
 
     unsafe extern "C" fn dealloc(&self, _: Sel) {
-        drop(Box::from_raw(self.state.get() as *mut WindowState));
+        drop(Rc::from_raw(self.state.get() as *mut WindowState));
 
         let () = msg_send![super(self, NSView::class()), dealloc];
     }
 }
 
 pub struct WindowState {
+    view: RefCell<Option<Id<View>>>,
+    window: RefCell<Option<Id<NSWindow>>>,
     surface: RefCell<Option<Surface>>,
     cursor: Cell<Cursor>,
     app_state: Rc<AppState>,
@@ -306,6 +299,14 @@ pub struct WindowState {
 }
 
 impl WindowState {
+    pub fn view(&self) -> Option<Id<View>> {
+        self.view.borrow().as_ref().map(|view| view.retain())
+    }
+
+    pub fn window(&self) -> Option<Id<NSWindow>> {
+        self.window.borrow().clone()
+    }
+
     pub fn handle_event(&self, event: Event) -> Option<Response> {
         if let Ok(mut handler) = self.handler.try_borrow_mut() {
             if let Ok(mut data) = self.app_state.data.try_borrow_mut() {
@@ -353,11 +354,21 @@ impl WindowState {
             ns_cursor.set();
         }
     }
+
+    pub fn close(&self) {
+        if let Some(window) = self.window.take() {
+            unsafe { window.close() };
+        }
+
+        if let Some(view) = self.view.take() {
+            unsafe { view.removeFromSuperview() };
+        }
+    }
 }
 
+#[derive(Clone)]
 pub struct WindowInner {
-    view: Id<View>,
-    window: Option<Id<NSWindow>>,
+    state: Rc<WindowState>,
 }
 
 impl WindowInner {
@@ -371,6 +382,8 @@ impl WindowInner {
         H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
         H: 'static,
     {
+        let app_state = cx.inner.state;
+
         let parent_view = if let Some(parent) = options.parent {
             if let RawParent::Cocoa(parent_view) = parent {
                 Some(parent_view as *const NSView)
@@ -399,22 +412,29 @@ impl WindowInner {
                 handler(data, &cx, event)
             };
 
-        let state = Box::new(WindowState {
+        let state = Rc::new(WindowState {
+            view: RefCell::new(None),
+            window: RefCell::new(None),
             surface: RefCell::new(None),
             cursor: Cell::new(Cursor::Arrow),
-            app_state: Rc::clone(cx.inner.state),
+            app_state: Rc::clone(app_state),
             handler: RefCell::new(Box::new(handler_wrapper)),
         });
-        let view = View::new(state, frame);
+
+        let view: Option<Allocated<View>> = unsafe { msg_send_id![app_state.class, alloc] };
+        let view: Id<View> = unsafe { msg_send_id![view, initWithFrame: frame] };
+        view.state.set(Rc::into_raw(Rc::clone(&state)) as *mut c_void);
+
+        state.view.replace(Some(view.retain()));
+
+        let tracking_options = icrate::AppKit::NSTrackingMouseEnteredAndExited
+            | icrate::AppKit::NSTrackingMouseMoved
+            | icrate::AppKit::NSTrackingCursorUpdate
+            | icrate::AppKit::NSTrackingActiveAlways
+            | icrate::AppKit::NSTrackingInVisibleRect
+            | icrate::AppKit::NSTrackingEnabledDuringMouseDrag;
 
         unsafe {
-            let tracking_options = icrate::AppKit::NSTrackingMouseEnteredAndExited
-                | icrate::AppKit::NSTrackingMouseMoved
-                | icrate::AppKit::NSTrackingCursorUpdate
-                | icrate::AppKit::NSTrackingActiveAlways
-                | icrate::AppKit::NSTrackingInVisibleRect
-                | icrate::AppKit::NSTrackingEnabledDuringMouseDrag;
-
             let tracking_area = NSTrackingArea::initWithRect_options_owner_userInfo(
                 NSTrackingArea::alloc(),
                 NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(0.0, 0.0)),
@@ -423,32 +443,36 @@ impl WindowInner {
                 None,
             );
             view.addTrackingArea(&tracking_area);
+        }
 
-            if let Some(parent_view) = parent_view {
+        if let Some(parent_view) = parent_view {
+            unsafe {
                 view.setHidden(true);
                 (*parent_view).addSubview(&view);
             }
+        } else {
+            let origin = options.position.unwrap_or(Point::new(0.0, 0.0));
+            let content_rect = NSRect::new(
+                NSPoint::new(origin.x, origin.y),
+                NSSize::new(options.size.width, options.size.height),
+            );
 
-            let window = if parent_view.is_none() {
-                let origin = options.position.unwrap_or(Point::new(0.0, 0.0));
-                let content_rect = NSRect::new(
-                    NSPoint::new(origin.x, origin.y),
-                    NSSize::new(options.size.width, options.size.height),
-                );
+            let style_mask = icrate::AppKit::NSWindowStyleMaskTitled
+                | icrate::AppKit::NSWindowStyleMaskClosable
+                | icrate::AppKit::NSWindowStyleMaskMiniaturizable
+                | icrate::AppKit::NSWindowStyleMaskResizable;
 
-                let style_mask = icrate::AppKit::NSWindowStyleMaskTitled
-                    | icrate::AppKit::NSWindowStyleMaskClosable
-                    | icrate::AppKit::NSWindowStyleMaskMiniaturizable
-                    | icrate::AppKit::NSWindowStyleMaskResizable;
-
-                let window = NSWindow::initWithContentRect_styleMask_backing_defer(
+            let window = unsafe {
+                NSWindow::initWithContentRect_styleMask_backing_defer(
                     NSWindow::alloc(),
                     content_rect,
                     style_mask,
                     icrate::AppKit::NSBackingStoreBuffered,
                     false,
-                );
+                )
+            };
 
+            unsafe {
                 window.setReleasedWhenClosed(false);
 
                 window.setTitle(&NSString::from_str(&options.title));
@@ -460,74 +484,78 @@ impl WindowInner {
                 if options.position.is_none() {
                     window.center();
                 }
+            }
 
-                Some(window)
-            } else {
-                None
-            };
+            state.window.replace(Some(window));
+        }
 
-            cx.inner.state.windows.borrow_mut().insert(Id::as_ptr(&view), view.retain());
+        app_state.windows.borrow_mut().insert(Rc::as_ptr(&state), Rc::clone(&state));
 
-            let inner = WindowInner { view, window };
+        let inner = WindowInner { state };
 
-            let scale = inner.scale();
+        let scale = inner.scale();
 
-            let surface = Surface::new(
-                (scale * options.size.width).round() as usize,
-                (scale * options.size.height).round() as usize,
-            );
+        let surface = Surface::new(
+            (scale * options.size.width).round() as usize,
+            (scale * options.size.height).round() as usize,
+        );
 
-            let () = msg_send![&inner.view, setLayer: &*surface.layer];
-            inner.view.setWantsLayer(true);
+        unsafe {
+            let () = msg_send![&*view, setLayer: &*surface.layer];
+            view.setWantsLayer(true);
 
             surface.layer.setContentsScale(scale);
-
-            inner.view.state().surface.replace(Some(surface));
-
-            Ok(inner)
         }
+
+        inner.state.surface.replace(Some(surface));
+
+        Ok(inner)
     }
 
     pub fn show(&self) {
-        unsafe {
-            if let Some(window) = &self.window {
-                window.orderFront(None);
-            } else {
-                self.view.setHidden(false);
-            }
+        if let Some(window) = self.state.window() {
+            unsafe { window.orderFront(None) };
+        }
+
+        if let Some(view) = self.state.view() {
+            unsafe { view.setHidden(false) };
         }
     }
 
     pub fn hide(&self) {
-        unsafe {
-            if let Some(window) = &self.window {
-                window.orderOut(None);
-            } else {
-                self.view.setHidden(true);
-            }
+        if let Some(window) = self.state.window() {
+            unsafe { window.orderOut(None) };
+        }
+
+        if let Some(view) = self.state.view() {
+            unsafe { view.setHidden(true) };
         }
     }
 
     pub fn size(&self) -> Size {
-        let frame = unsafe { self.view.frame() };
+        if let Some(view) = self.state.view() {
+            let frame = unsafe { view.frame() };
 
-        Size::new(frame.size.width, frame.size.height)
-    }
-
-    pub fn scale(&self) -> f64 {
-        unsafe {
-            if let Some(window) = self.view.window() {
-                window.backingScaleFactor()
-            } else if let Some(screen) = NSScreen::screens().get(0) {
-                screen.backingScaleFactor()
-            } else {
-                1.0
-            }
+            Size::new(frame.size.width, frame.size.height)
+        } else {
+            Size::new(0.0, 0.0)
         }
     }
 
+    pub fn scale(&self) -> f64 {
+        if let Some(view) = self.state.view() {
+            if let Some(window) = unsafe { view.window() } {
+                return unsafe { window.backingScaleFactor() };
+            } else if let Some(screen) = unsafe { NSScreen::screens() }.get(0) {
+                return unsafe { screen.backingScaleFactor() };
+            }
+        }
+
+        1.0
+    }
+
     pub fn present(&self, bitmap: Bitmap) {
-        if let Some(surface) = &mut *self.view.state().surface.borrow_mut() {
+        if let Some(surface) = &mut *self.state.surface.borrow_mut() {
             let width = surface.width;
             let height = surface.height;
             let copy_width = bitmap.width().min(width);
@@ -551,25 +579,14 @@ impl WindowInner {
     }
 
     pub fn set_cursor(&self, cursor: Cursor) {
-        let state = self.view.state();
-
-        state.cursor.set(cursor);
-        state.update_cursor();
+        self.state.cursor.set(cursor);
+        self.state.update_cursor();
     }
 
     pub fn set_mouse_position(&self, _position: Point) {}
-}
 
-impl Drop for WindowInner {
-    fn drop(&mut self) {
-        unsafe {
-            if let Some(window) = &self.window {
-                window.close();
-            } else {
-                self.view.removeFromSuperview();
-            }
-        }
-
-        self.view.state().app_state.windows.borrow_mut().remove(&Id::as_ptr(&self.view));
+    pub fn close(&self) {
+        self.state.app_state.windows.borrow_mut().remove(&Rc::as_ptr(&self.state));
+        self.state.close();
     }
 }
