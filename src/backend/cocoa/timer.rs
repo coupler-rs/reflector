@@ -1,9 +1,9 @@
 use std::any::Any;
-use std::cell::RefCell;
-use std::collections::HashSet;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ptr;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::time::Duration;
 
 use core_foundation::base::{CFRelease, CFTypeRef};
@@ -28,30 +28,40 @@ extern "C" fn release(info: *const c_void) {
 }
 
 extern "C" fn callback(_timer: CFRunLoopTimerRef, info: *mut c_void) {
-    let timer_state = unsafe { &*(info as *const TimerState) };
+    let state = unsafe { &*(info as *const TimerState) };
 
-    if let Some(app_state) = timer_state.app_state.upgrade() {
-        if let Ok(mut data) = app_state.data.try_borrow_mut() {
-            if let Some(data) = &mut *data {
-                timer_state.handler.borrow_mut()(&mut **data, &app_state);
-            }
+    if let Ok(mut data) = state.app_state.data.try_borrow_mut() {
+        if let Some(data) = &mut *data {
+            state.handler.borrow_mut()(&mut **data, &state.app_state);
         }
     }
 }
 
 struct TimerState {
-    app_state: Weak<AppState>,
+    timer_ref: Cell<Option<CFRunLoopTimerRef>>,
+    app_state: Rc<AppState>,
     handler: RefCell<Box<dyn FnMut(&mut dyn Any, &Rc<AppState>)>>,
 }
 
+impl TimerState {
+    fn cancel(&self) {
+        if let Some(timer_ref) = self.timer_ref.take() {
+            unsafe {
+                CFRunLoopTimerInvalidate(timer_ref);
+                CFRelease(timer_ref as CFTypeRef);
+            }
+        }
+    }
+}
+
 pub struct Timers {
-    timers: RefCell<HashSet<CFRunLoopTimerRef>>,
+    timers: RefCell<HashMap<CFRunLoopTimerRef, Rc<TimerState>>>,
 }
 
 impl Timers {
     pub fn new() -> Timers {
         Timers {
-            timers: RefCell::new(HashSet::new()),
+            timers: RefCell::new(HashMap::new()),
         }
     }
 
@@ -73,23 +83,24 @@ impl Timers {
             handler(data, &cx)
         };
 
-        let timer_state = Rc::new(TimerState {
-            app_state: Rc::downgrade(app_state),
+        let state = Rc::new(TimerState {
+            timer_ref: Cell::new(None),
+            app_state: Rc::clone(app_state),
             handler: RefCell::new(Box::new(handler_wrapper)),
         });
 
         let mut context = CFRunLoopTimerContext {
             version: 0,
-            info: Rc::as_ptr(&timer_state) as *mut c_void,
+            info: Rc::as_ptr(&state) as *mut c_void,
             retain: Some(retain),
             release: Some(release),
             copyDescription: None,
         };
 
-        let timer = unsafe {
-            let now = CFAbsoluteTimeGetCurrent();
-            let interval = duration.as_secs_f64();
+        let now = unsafe { CFAbsoluteTimeGetCurrent() };
+        let interval = duration.as_secs_f64();
 
+        let timer_ref = unsafe {
             CFRunLoopTimerCreate(
                 ptr::null(),
                 now + interval,
@@ -100,47 +111,36 @@ impl Timers {
                 &mut context,
             )
         };
+        state.timer_ref.set(Some(timer_ref));
 
-        app_state.timers.timers.borrow_mut().insert(timer);
+        app_state.timers.timers.borrow_mut().insert(timer_ref, Rc::clone(&state));
 
         unsafe {
             let run_loop = CFRunLoopGetCurrent();
-            CFRunLoopAddTimer(run_loop, timer, kCFRunLoopCommonModes);
+            CFRunLoopAddTimer(run_loop, timer_ref, kCFRunLoopCommonModes);
         }
 
-        TimerInner {
-            app_state: Rc::downgrade(app_state),
-            timer,
-        }
+        TimerInner { state }
     }
-}
 
-impl Drop for Timers {
-    fn drop(&mut self) {
-        for timer in self.timers.take() {
-            unsafe {
-                CFRunLoopTimerInvalidate(timer);
-                CFRelease(timer as CFTypeRef);
-            }
+    pub fn shutdown(&self) {
+        for timer in self.timers.take().into_values() {
+            timer.cancel();
         }
     }
 }
 
 #[derive(Clone)]
 pub struct TimerInner {
-    app_state: Weak<AppState>,
-    timer: CFRunLoopTimerRef,
+    state: Rc<TimerState>,
 }
 
 impl TimerInner {
     pub fn cancel(&self) {
-        if let Some(app_state) = self.app_state.upgrade() {
-            if app_state.timers.timers.borrow_mut().remove(&self.timer) {
-                unsafe {
-                    CFRunLoopTimerInvalidate(self.timer);
-                    CFRelease(self.timer as CFTypeRef);
-                }
-            }
+        if let Some(timer_ref) = self.state.timer_ref.get() {
+            self.state.app_state.timers.timers.borrow_mut().remove(&timer_ref);
         }
+
+        self.state.cancel();
     }
 }

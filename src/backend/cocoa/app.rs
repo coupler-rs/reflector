@@ -121,6 +121,8 @@ impl<T> Drop for AppInner<T> {
                 for window_state in self.state.windows.take().into_values() {
                     window_state.close();
                 }
+
+                self.state.timers.shutdown();
             }
         })
     }
