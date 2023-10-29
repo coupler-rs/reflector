@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::rc::Rc;
-use std::result;
 use std::time::{Duration, Instant};
 
 use x11rb::connection::{Connection, RequestConnection};
@@ -14,9 +13,7 @@ use x11rb::{cursor, protocol, resource_manager};
 
 use super::timer::{TimerInner, Timers};
 use super::window::WindowState;
-use crate::{
-    App, AppContext, AppOptions, Cursor, Event, IntoInnerError, MouseButton, Point, Rect, Result,
-};
+use crate::{AppContext, AppOptions, Cursor, Event, MouseButton, Point, Rect, Result};
 
 fn mouse_button_from_code(code: Button) -> Option<MouseButton> {
     match code {
@@ -250,10 +247,6 @@ impl<T: 'static> AppInner<T> {
         }
 
         Ok(())
-    }
-
-    pub fn into_inner(mut self) -> result::Result<T, IntoInnerError<App<T>>> {
-        Ok(self.data.take().unwrap())
     }
 }
 

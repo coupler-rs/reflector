@@ -4,7 +4,7 @@ mod error;
 mod window;
 
 pub use app::{App, AppContext, AppMode, AppOptions, Timer};
-pub use error::{Error, IntoInnerError, Result};
+pub use error::{Error, Result};
 pub use window::{
     Bitmap, Cursor, Event, MouseButton, Point, RawParent, Rect, Response, Size, Window,
     WindowOptions,

@@ -3,7 +3,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::rc::Rc;
-use std::result;
 use std::time::Duration;
 
 use objc2::rc::{autoreleasepool, Id};
@@ -16,7 +15,7 @@ use icrate::Foundation::{NSPoint, NSSize, NSThread};
 use super::display_links::DisplayLinks;
 use super::timer::{TimerInner, Timers};
 use super::window::{View, WindowState};
-use crate::{App, AppContext, AppMode, AppOptions, Error, IntoInnerError, Result};
+use crate::{AppContext, AppMode, AppOptions, Result};
 
 pub struct AppState {
     pub class: &'static AnyClass,
@@ -110,19 +109,6 @@ impl<T: 'static> AppInner<T> {
 
     pub fn poll(&mut self) -> Result<()> {
         Ok(())
-    }
-
-    pub fn into_inner(self) -> result::Result<T, IntoInnerError<App<T>>> {
-        if let Ok(mut data) = self.state.data.try_borrow_mut() {
-            if let Some(data) = data.take() {
-                return Ok(*data.downcast().unwrap());
-            }
-        }
-
-        Err(IntoInnerError::new(
-            Error::InsideEventHandler,
-            App::from_inner(self),
-        ))
     }
 }
 

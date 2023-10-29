@@ -1,8 +1,8 @@
+use std::fmt;
 use std::marker::PhantomData;
 use std::time::Duration;
-use std::{fmt, result};
 
-use crate::{backend, IntoInnerError, Result};
+use crate::{backend, Result};
 
 #[derive(Clone)]
 pub struct Timer {
@@ -81,10 +81,6 @@ impl<T: 'static> App<T> {
 
     pub fn poll(&mut self) -> Result<()> {
         self.inner.poll()
-    }
-
-    pub fn into_inner(self) -> result::Result<T, IntoInnerError<App<T>>> {
-        self.inner.into_inner()
     }
 }
 

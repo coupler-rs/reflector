@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
-use std::{mem, ptr, result};
+use std::{mem, ptr};
 
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
@@ -21,7 +21,7 @@ use super::timer::{TimerInner, Timers};
 use super::vsync::VsyncThreads;
 use super::window::{self, WindowState};
 use super::{class_name, hinstance, to_wstring, WM_USER_VBLANK};
-use crate::{App, AppContext, AppMode, AppOptions, Error, IntoInnerError, Result};
+use crate::{AppContext, AppMode, AppOptions, Error, Result};
 
 fn register_message_class() -> Result<PCWSTR> {
     let class_name = to_wstring(&class_name("message-"));
@@ -226,19 +226,6 @@ impl<T: 'static> AppInner<T> {
                 DispatchMessageW(&msg);
             }
         }
-    }
-
-    pub fn into_inner(self) -> result::Result<T, IntoInnerError<App<T>>> {
-        if let Ok(mut data) = self.state.data.try_borrow_mut() {
-            if let Some(data) = data.take() {
-                return Ok(*data.downcast().unwrap());
-            }
-        }
-
-        Err(IntoInnerError::new(
-            Error::InsideEventHandler,
-            App::from_inner(self),
-        ))
     }
 }
 
