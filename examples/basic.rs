@@ -53,7 +53,7 @@ impl State {
 }
 
 fn main() {
-    let mut app = AppOptions::new()
+    let app = AppOptions::new()
         .build(|cx| {
             let window = WindowOptions::new()
                 .title("window")

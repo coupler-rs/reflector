@@ -75,11 +75,11 @@ impl<T: 'static> App<T> {
         }
     }
 
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run(&self) -> Result<()> {
         self.inner.run()
     }
 
-    pub fn poll(&mut self) -> Result<()> {
+    pub fn poll(&self) -> Result<()> {
         self.inner.poll()
     }
 }

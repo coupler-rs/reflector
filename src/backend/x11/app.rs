@@ -70,7 +70,7 @@ impl Drop for AppState {
 
 pub struct AppInner<T> {
     state: Rc<AppState>,
-    data: T,
+    data: RefCell<T>,
 }
 
 impl<T: 'static> AppInner<T> {
@@ -109,19 +109,22 @@ impl<T: 'static> AppInner<T> {
         let cx = AppContext::from_inner(AppContextInner::new(&state));
         let data = build(&cx)?;
 
-        let inner = AppInner { state, data };
+        let inner = AppInner {
+            state,
+            data: RefCell::new(data),
+        };
 
         Ok(inner)
     }
 
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run(&self) -> Result<()> {
         self.state.running.set(true);
 
         let fd = self.as_raw_fd();
 
         while self.state.running.get() {
             self.drain_events()?;
-            self.state.timers.poll(&mut self.data, &self.state);
+            self.state.timers.poll(&mut *self.data.borrow_mut(), &self.state);
             self.drain_events()?;
 
             if !self.state.running.get() {
@@ -149,15 +152,15 @@ impl<T: 'static> AppInner<T> {
         Ok(())
     }
 
-    pub fn poll(&mut self) -> Result<()> {
+    pub fn poll(&self) -> Result<()> {
         self.drain_events()?;
-        self.state.timers.poll(&mut self.data, &self.state);
+        self.state.timers.poll(&mut *self.data.borrow_mut(), &self.state);
         self.drain_events()?;
 
         Ok(())
     }
 
-    fn drain_events(&mut self) -> Result<()> {
+    fn drain_events(&self) -> Result<()> {
         while let Some(event) = self.state.connection.poll_for_event()? {
             match event {
                 protocol::Event::Expose(event) => {
@@ -173,7 +176,7 @@ impl<T: 'static> AppInner<T> {
                         if event.count == 0 {
                             let rects = window.expose_rects.take();
                             window.handler.borrow_mut()(
-                                &mut self.data,
+                                &mut *self.data.borrow_mut(),
                                 &self.state,
                                 Event::Expose(&rects),
                             );
@@ -186,7 +189,11 @@ impl<T: 'static> AppInner<T> {
                     {
                         let window = self.state.windows.borrow().get(&event.window).cloned();
                         if let Some(window) = window {
-                            window.handler.borrow_mut()(&mut self.data, &self.state, Event::Close);
+                            window.handler.borrow_mut()(
+                                &mut *self.data.borrow_mut(),
+                                &self.state,
+                                Event::Close,
+                            );
                         }
                     }
                 }
@@ -199,7 +206,7 @@ impl<T: 'static> AppInner<T> {
                         };
 
                         window.handler.borrow_mut()(
-                            &mut self.data,
+                            &mut *self.data.borrow_mut(),
                             &self.state,
                             Event::MouseMove(point),
                         );
@@ -210,13 +217,13 @@ impl<T: 'static> AppInner<T> {
                     if let Some(window) = window {
                         if let Some(button) = mouse_button_from_code(event.detail) {
                             window.handler.borrow_mut()(
-                                &mut self.data,
+                                &mut *self.data.borrow_mut(),
                                 &self.state,
                                 Event::MouseDown(button),
                             );
                         } else if let Some(delta) = scroll_delta_from_code(event.detail) {
                             window.handler.borrow_mut()(
-                                &mut self.data,
+                                &mut *self.data.borrow_mut(),
                                 &self.state,
                                 Event::Scroll(delta),
                             );
@@ -228,7 +235,7 @@ impl<T: 'static> AppInner<T> {
                     if let Some(window) = window {
                         if let Some(button) = mouse_button_from_code(event.detail) {
                             window.handler.borrow_mut()(
-                                &mut self.data,
+                                &mut *self.data.borrow_mut(),
                                 &self.state,
                                 Event::MouseUp(button),
                             );

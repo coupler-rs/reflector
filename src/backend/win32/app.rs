@@ -186,7 +186,7 @@ impl<T: 'static> AppInner<T> {
         })
     }
 
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run(&self) -> Result<()> {
         if self.state.data.try_borrow().is_err() {
             return Err(Error::InsideEventHandler);
         }
@@ -208,7 +208,7 @@ impl<T: 'static> AppInner<T> {
         }
     }
 
-    pub fn poll(&mut self) -> Result<()> {
+    pub fn poll(&self) -> Result<()> {
         if self.state.data.try_borrow().is_err() {
             return Err(Error::InsideEventHandler);
         }

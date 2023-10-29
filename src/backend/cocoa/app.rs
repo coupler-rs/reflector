@@ -99,7 +99,7 @@ impl<T: 'static> AppInner<T> {
         })
     }
 
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run(&self) -> Result<()> {
         autoreleasepool(|_| unsafe {
             NSApplication::sharedApplication().run();
 
@@ -107,7 +107,7 @@ impl<T: 'static> AppInner<T> {
         })
     }
 
-    pub fn poll(&mut self) -> Result<()> {
+    pub fn poll(&self) -> Result<()> {
         Ok(())
     }
 }
