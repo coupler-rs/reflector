@@ -94,7 +94,6 @@ impl WindowState {
 
     pub fn close(&self) {
         if let Some(window_id) = self.window_id.take() {
-            self.app_state.windows.borrow_mut().remove(&window_id);
             let _ = self.app_state.connection.destroy_window(window_id);
         }
 
@@ -394,7 +393,12 @@ impl WindowInner {
     }
 
     pub fn close(&self) {
+        if let Some(window_id) = self.state.window_id.get() {
+            self.state.app_state.windows.borrow_mut().remove(&window_id);
+        }
+
         self.state.close();
+
         let _ = self.state.app_state.connection.flush();
     }
 }
