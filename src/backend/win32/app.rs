@@ -98,7 +98,6 @@ pub struct AppState {
 
 impl Drop for AppState {
     fn drop(&mut self) {
-        self.timers.kill_timers(&self);
         self.vsync_threads.join_all();
 
         unsafe {
@@ -237,6 +236,8 @@ impl<T> Drop for AppInner<T> {
             for window_state in self.state.windows.take().into_values() {
                 window_state.close();
             }
+
+            self.state.timers.shutdown();
         }
     }
 }

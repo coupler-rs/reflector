@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::time::Duration;
 
 use windows::Win32::UI::WindowsAndMessaging::{KillTimer, SetTimer};
@@ -10,7 +10,17 @@ use super::app::{AppContextInner, AppState};
 use crate::AppContext;
 
 struct TimerState {
+    timer_id: Cell<Option<usize>>,
+    app_state: Rc<AppState>,
     handler: RefCell<Box<dyn FnMut(&mut dyn Any, &Rc<AppState>)>>,
+}
+
+impl TimerState {
+    fn cancel(&self) {
+        if let Some(timer_id) = self.timer_id.take() {
+            let _ = unsafe { KillTimer(self.app_state.message_hwnd, timer_id) };
+        }
+    }
 }
 
 pub struct Timers {
@@ -47,22 +57,20 @@ impl Timers {
             handler(data, &cx)
         };
 
-        self.timers.borrow_mut().insert(
-            timer_id,
-            Rc::new(TimerState {
-                handler: RefCell::new(Box::new(handler_wrapper)),
-            }),
-        );
+        let state = Rc::new(TimerState {
+            timer_id: Cell::new(Some(timer_id)),
+            app_state: Rc::clone(app_state),
+            handler: RefCell::new(Box::new(handler_wrapper)),
+        });
+
+        self.timers.borrow_mut().insert(timer_id, Rc::clone(&state));
 
         unsafe {
             let millis = duration.as_millis() as u32;
             SetTimer(app_state.message_hwnd, timer_id, millis, None);
         }
 
-        TimerInner {
-            app_state: Rc::downgrade(app_state),
-            timer_id,
-        }
+        TimerInner { state }
     }
 
     pub fn handle_timer(&self, app_state: &Rc<AppState>, timer_id: usize) {
@@ -76,29 +84,24 @@ impl Timers {
         }
     }
 
-    pub fn kill_timers(&self, app_state: &AppState) {
-        for (timer_id, _timer) in self.timers.take() {
-            unsafe {
-                let _ = KillTimer(app_state.message_hwnd, timer_id);
-            }
+    pub fn shutdown(&self) {
+        for timer in self.timers.take().into_values() {
+            timer.cancel();
         }
     }
 }
 
 #[derive(Clone)]
 pub struct TimerInner {
-    app_state: Weak<AppState>,
-    timer_id: usize,
+    state: Rc<TimerState>,
 }
 
 impl TimerInner {
     pub fn cancel(&self) {
-        if let Some(app_state) = self.app_state.upgrade() {
-            if let Some(_) = app_state.timers.timers.borrow_mut().remove(&self.timer_id) {
-                unsafe {
-                    let _ = KillTimer(app_state.message_hwnd, self.timer_id);
-                }
-            }
+        if let Some(timer_id) = self.state.timer_id.get() {
+            self.state.app_state.timers.timers.borrow_mut().remove(&timer_id);
         }
+
+        self.state.cancel();
     }
 }
