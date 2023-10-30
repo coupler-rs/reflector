@@ -11,11 +11,11 @@ use x11rb::protocol::xproto::{
 };
 use x11rb::wrapper::ConnectionExt as _;
 
-use super::app::{AppContextInner, AppState};
+use super::app::{AppInner, AppState};
 use super::OsError;
 use crate::{
-    AppContext, Bitmap, Cursor, Error, Event, Point, RawParent, Rect, Response, Result, Size,
-    WindowOptions,
+    AppHandle, Bitmap, Cursor, Error, Event, Point, RawParent, Rect, Response, Result, Size,
+    WindowContext, WindowOptions,
 };
 
 pub struct ShmState {
@@ -32,7 +32,7 @@ pub struct WindowState {
     pub shm_state: RefCell<Option<ShmState>>,
     pub expose_rects: RefCell<Vec<Rect>>,
     pub app_state: Rc<AppState>,
-    pub handler: RefCell<Box<dyn FnMut(&crate::Window, &AppContext, Event) -> Response>>,
+    pub handler: RefCell<Box<dyn FnMut(&WindowContext, Event) -> Response>>,
 }
 
 impl WindowState {
@@ -92,11 +92,14 @@ impl WindowState {
     }
 
     pub fn handle_event(self: &Rc<WindowState>, event: Event) -> Response {
+        let app = AppHandle::from_inner(AppInner {
+            state: Rc::clone(&self.app_state),
+        });
         let window = crate::Window::from_inner(WindowInner {
             state: self.clone(),
         });
-        let cx = AppContext::from_inner(AppContextInner::new(&self.app_state));
-        self.handler.borrow_mut()(&window, &cx, event)
+        let cx = WindowContext::new(&app, &window);
+        self.handler.borrow_mut()(&cx, event)
     }
 
     pub fn close(&self) {
@@ -118,11 +121,12 @@ pub struct WindowInner {
 }
 
 impl WindowInner {
-    pub fn open<H>(options: &WindowOptions, cx: &AppContext, handler: H) -> Result<WindowInner>
+    pub fn open<H>(options: &WindowOptions, app: &AppHandle, handler: H) -> Result<WindowInner>
     where
-        H: FnMut(&crate::Window, &AppContext, Event) -> Response + 'static,
+        H: FnMut(&WindowContext, Event) -> Response + 'static,
     {
-        let connection = &cx.inner.state.connection;
+        let app_state = &app.inner.state;
+        let connection = &app_state.connection;
 
         let window_id = connection.generate_id()?;
 
@@ -133,7 +137,7 @@ impl WindowInner {
                 return Err(Error::InvalidWindowHandle);
             }
         } else {
-            connection.setup().roots[cx.inner.state.screen_index].root
+            connection.setup().roots[app_state.screen_index].root
         };
 
         let position = options.position.unwrap_or(Point::new(0.0, 0.0));
@@ -168,23 +172,23 @@ impl WindowInner {
         connection.change_property8(
             PropMode::REPLACE,
             window_id,
-            cx.inner.state.atoms._NET_WM_NAME,
-            cx.inner.state.atoms.UTF8_STRING,
+            app_state.atoms._NET_WM_NAME,
+            app_state.atoms.UTF8_STRING,
             options.title.as_bytes(),
         )?;
         connection.change_property32(
             PropMode::REPLACE,
             window_id,
-            cx.inner.state.atoms.WM_PROTOCOLS,
+            app_state.atoms.WM_PROTOCOLS,
             AtomEnum::ATOM,
-            &[cx.inner.state.atoms.WM_DELETE_WINDOW],
+            &[app_state.atoms.WM_DELETE_WINDOW],
         )?;
 
         let gc_id = connection.generate_id()?;
         connection.create_gc(gc_id, window_id, &CreateGCAux::default())?;
 
         let shm_state = WindowState::init_shm(
-            &cx.inner.state,
+            &app_state,
             options.size.width.round() as usize,
             options.size.height.round() as usize,
         )?;
@@ -196,11 +200,11 @@ impl WindowInner {
             gc_id: Cell::new(Some(gc_id)),
             shm_state: RefCell::new(shm_state),
             expose_rects: RefCell::new(Vec::new()),
-            app_state: Rc::clone(&cx.inner.state),
+            app_state: Rc::clone(&app_state),
             handler: RefCell::new(Box::new(handler)),
         });
 
-        cx.inner.state.windows.borrow_mut().insert(window_id, Rc::clone(&state));
+        app_state.windows.borrow_mut().insert(window_id, Rc::clone(&state));
 
         Ok(WindowInner { state })
     }

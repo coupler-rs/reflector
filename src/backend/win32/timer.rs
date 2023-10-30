@@ -5,13 +5,13 @@ use std::time::Duration;
 
 use windows::Win32::UI::WindowsAndMessaging::{KillTimer, SetTimer};
 
-use super::app::{AppContextInner, AppState};
-use crate::AppContext;
+use super::app::{AppInner, AppState};
+use crate::{AppHandle, Timer, TimerContext};
 
 struct TimerState {
     timer_id: Cell<Option<usize>>,
     app_state: Rc<AppState>,
-    handler: RefCell<Box<dyn FnMut(&AppContext)>>,
+    handler: RefCell<Box<dyn FnMut(&TimerContext)>>,
 }
 
 impl TimerState {
@@ -42,7 +42,7 @@ impl Timers {
         handler: H,
     ) -> TimerInner
     where
-        H: FnMut(&AppContext) + 'static,
+        H: FnMut(&TimerContext) + 'static,
     {
         let timer_id = self.next_id.get();
         self.next_id.set(timer_id + 1);
@@ -66,8 +66,12 @@ impl Timers {
     pub fn handle_timer(&self, app_state: &Rc<AppState>, timer_id: usize) {
         let timer_state = app_state.timers.timers.borrow().get(&timer_id).cloned();
         if let Some(timer_state) = timer_state {
-            let cx = AppContext::from_inner(AppContextInner::new(app_state));
-            timer_state.handler.borrow_mut()(&cx);
+            let app = AppHandle::from_inner(AppInner {
+                state: Rc::clone(&app_state),
+            });
+            let timer = Timer::from_inner(TimerInner { state: timer_state });
+            let cx = TimerContext::new(&app, &timer);
+            timer.inner.state.handler.borrow_mut()(&cx);
         }
     }
 

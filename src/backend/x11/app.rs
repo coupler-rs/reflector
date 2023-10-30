@@ -12,7 +12,7 @@ use x11rb::{cursor, protocol, resource_manager};
 
 use super::timer::{TimerInner, Timers};
 use super::window::WindowState;
-use crate::{AppContext, AppOptions, Cursor, Event, MouseButton, Point, Rect, Result};
+use crate::{AppOptions, Cursor, Event, MouseButton, Point, Rect, Result, TimerContext};
 
 fn mouse_button_from_code(code: Button) -> Option<MouseButton> {
     match code {
@@ -68,7 +68,7 @@ impl Drop for AppState {
 }
 
 pub struct AppInner {
-    state: Rc<AppState>,
+    pub state: Rc<AppState>,
 }
 
 impl AppInner {
@@ -105,8 +105,12 @@ impl AppInner {
         Ok(inner)
     }
 
-    pub fn context(&self) -> AppContextInner {
-        AppContextInner::new(&self.state)
+    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerInner
+    where
+        H: 'static,
+        H: FnMut(&TimerContext),
+    {
+        self.state.timers.set_timer(&self.state, duration, handler)
     }
 
     pub fn run(&self) -> Result<()> {
@@ -142,6 +146,10 @@ impl AppInner {
         }
 
         Ok(())
+    }
+
+    pub fn exit(&self) {
+        self.state.running.set(false);
     }
 
     pub fn poll(&self) -> Result<()> {
@@ -216,10 +224,8 @@ impl AppInner {
 
         Ok(())
     }
-}
 
-impl Drop for AppInner {
-    fn drop(&mut self) {
+    pub fn shutdown(&self) {
         for window_state in self.state.windows.take().into_values() {
             window_state.close();
         }
@@ -230,27 +236,5 @@ impl Drop for AppInner {
 impl AsRawFd for AppInner {
     fn as_raw_fd(&self) -> RawFd {
         self.state.connection.stream().as_raw_fd()
-    }
-}
-
-pub struct AppContextInner<'a> {
-    pub state: &'a Rc<AppState>,
-}
-
-impl<'a> AppContextInner<'a> {
-    pub(super) fn new(state: &'a Rc<AppState>) -> AppContextInner<'a> {
-        AppContextInner { state }
-    }
-
-    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerInner
-    where
-        H: 'static,
-        H: FnMut(&AppContext),
-    {
-        self.state.timers.set_timer(self.state, duration, handler)
-    }
-
-    pub fn exit(&self) {
-        self.state.running.set(false);
     }
 }

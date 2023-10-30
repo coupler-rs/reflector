@@ -19,7 +19,7 @@ use super::timer::{TimerInner, Timers};
 use super::vsync::VsyncThreads;
 use super::window::{self, WindowState};
 use super::{class_name, hinstance, to_wstring, WM_USER_VBLANK};
-use crate::{AppContext, AppMode, AppOptions, Result};
+use crate::{AppMode, AppOptions, Result, TimerContext};
 
 fn register_message_class() -> Result<PCWSTR> {
     let class_name = to_wstring(&class_name("message-"));
@@ -165,8 +165,11 @@ impl AppInner {
         Ok(AppInner { state })
     }
 
-    pub fn context(&self) -> AppContextInner {
-        AppContextInner::new(&self.state)
+    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerInner
+    where
+        H: FnMut(&TimerContext) + 'static,
+    {
+        self.state.timers.set_timer(&self.state, duration, handler)
     }
 
     pub fn run(&self) -> Result<()> {
@@ -187,6 +190,12 @@ impl AppInner {
         }
     }
 
+    pub fn exit(&self) {
+        unsafe {
+            PostQuitMessage(0);
+        }
+    }
+
     pub fn poll(&self) -> Result<()> {
         loop {
             unsafe {
@@ -202,37 +211,12 @@ impl AppInner {
             }
         }
     }
-}
 
-impl Drop for AppInner {
-    fn drop(&mut self) {
+    pub fn shutdown(&self) {
         for window_state in self.state.windows.take().into_values() {
             window_state.close();
         }
 
         self.state.timers.shutdown();
-    }
-}
-
-pub struct AppContextInner<'a> {
-    pub state: &'a Rc<AppState>,
-}
-
-impl<'a> AppContextInner<'a> {
-    pub(super) fn new(state: &'a Rc<AppState>) -> AppContextInner<'a> {
-        AppContextInner { state }
-    }
-
-    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerInner
-    where
-        H: FnMut(&AppContext) + 'static,
-    {
-        self.state.timers.set_timer(self.state, duration, handler)
-    }
-
-    pub fn exit(&self) {
-        unsafe {
-            PostQuitMessage(0);
-        }
     }
 }

@@ -9,8 +9,8 @@ use core_foundation::base::{CFRelease, CFTypeRef};
 use core_foundation::date::CFAbsoluteTimeGetCurrent;
 use core_foundation::runloop::*;
 
-use super::app::{AppContextInner, AppState};
-use crate::AppContext;
+use super::app::{AppInner, AppState};
+use crate::{AppHandle, Timer, TimerContext};
 
 extern "C" fn retain(info: *const c_void) -> *const c_void {
     unsafe {
@@ -27,16 +27,22 @@ extern "C" fn release(info: *const c_void) {
 }
 
 extern "C" fn callback(_timer: CFRunLoopTimerRef, info: *mut c_void) {
-    let state = unsafe { &*(info as *const TimerState) };
+    let state_rc = unsafe { Rc::from_raw(info as *const TimerState) };
+    let state = Rc::clone(&state_rc);
+    let _ = Rc::into_raw(state_rc);
 
-    let cx = AppContext::from_inner(AppContextInner::new(&state.app_state));
-    state.handler.borrow_mut()(&cx);
+    let app = AppHandle::from_inner(AppInner {
+        state: Rc::clone(&state.app_state),
+    });
+    let timer = Timer::from_inner(TimerInner { state });
+    let cx = TimerContext::new(&app, &timer);
+    timer.inner.state.handler.borrow_mut()(&cx);
 }
 
 struct TimerState {
     timer_ref: Cell<Option<CFRunLoopTimerRef>>,
     app_state: Rc<AppState>,
-    handler: RefCell<Box<dyn FnMut(&AppContext)>>,
+    handler: RefCell<Box<dyn FnMut(&TimerContext)>>,
 }
 
 impl TimerState {
@@ -68,7 +74,7 @@ impl Timers {
         handler: H,
     ) -> TimerInner
     where
-        H: FnMut(&AppContext) + 'static,
+        H: FnMut(&TimerContext) + 'static,
     {
         let state = Rc::new(TimerState {
             timer_ref: Cell::new(None),

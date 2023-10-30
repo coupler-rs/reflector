@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use portlight::{AppContext, AppOptions, Bitmap, Event, Response, Size, Window, WindowOptions};
+use portlight::{AppOptions, Bitmap, Event, Response, Size, WindowContext, WindowOptions};
 
 const WIDTH: usize = 512;
 const HEIGHT: usize = 512;
@@ -18,7 +18,7 @@ impl Drop for State {
 }
 
 impl State {
-    fn handle_event(&mut self, window: &Window, cx: &AppContext, event: Event) -> Response {
+    fn handle_event(&mut self, cx: &WindowContext, event: Event) -> Response {
         match event {
             Event::Expose(rects) => {
                 println!("expose: {:?}", rects);
@@ -26,12 +26,12 @@ impl State {
             Event::Frame => {
                 println!("frame");
 
-                let scale = window.scale();
+                let scale = cx.window().scale();
                 self.width = (WIDTH as f64 * scale) as usize;
                 self.height = (HEIGHT as f64 * scale) as usize;
                 self.framebuffer.resize(self.width * self.height, 0xFFFF00FF);
 
-                window.present(Bitmap::new(&self.framebuffer, self.width, self.height));
+                cx.window().present(Bitmap::new(&self.framebuffer, self.width, self.height));
             }
             Event::MouseMove(pos) => {
                 println!("mouse move: {:?}", pos);
@@ -49,7 +49,7 @@ impl State {
                 return Response::Capture;
             }
             Event::Close => {
-                cx.exit();
+                cx.app().exit();
             }
         }
 
@@ -69,12 +69,10 @@ fn main() {
     let window = WindowOptions::new()
         .title("window")
         .size(Size::new(512.0, 512.0))
-        .open(&app.context(), move |window, cx, event| {
-            state.handle_event(window, cx, event)
-        })
+        .open(app.handle(), move |cx, event| state.handle_event(cx, event))
         .unwrap();
 
-    app.context().set_timer(Duration::from_millis(1000), |_| {
+    app.handle().set_timer(Duration::from_millis(1000), |_| {
         println!("timer");
     });
 

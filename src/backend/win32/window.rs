@@ -15,11 +15,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
     ShowWindow, UnregisterClassW, CREATESTRUCTW, HCURSOR, HICON, HMENU, WINDOW_EX_STYLE, WNDCLASSW,
 };
 
-use super::app::{AppContextInner, AppState};
+use super::app::{AppInner, AppState};
 use super::{class_name, hinstance, to_wstring};
 use crate::{
-    AppContext, Bitmap, Cursor, Error, Event, MouseButton, Point, RawParent, Rect, Response,
-    Result, Size, Window, WindowOptions,
+    AppHandle, Bitmap, Cursor, Error, Event, MouseButton, Point, RawParent, Rect, Response, Result,
+    Size, Window, WindowContext, WindowOptions,
 };
 
 #[allow(non_snake_case)]
@@ -255,7 +255,7 @@ pub struct WindowState {
     mouse_down_count: Cell<isize>,
     cursor: Cell<Cursor>,
     app_state: Rc<AppState>,
-    handler: RefCell<Box<dyn FnMut(&Window, &AppContext, Event) -> Response>>,
+    handler: RefCell<Box<dyn FnMut(&WindowContext, Event) -> Response>>,
 }
 
 impl WindowState {
@@ -283,11 +283,14 @@ impl WindowState {
 
     pub fn handle_event(self: &Rc<WindowState>, event: Event) -> Option<Response> {
         if let Ok(mut handler) = self.handler.try_borrow_mut() {
-            let window = Window::from_inner(WindowInner {
-                state: self.clone(),
+            let app = AppHandle::from_inner(AppInner {
+                state: Rc::clone(&self.app_state),
             });
-            let cx = AppContext::from_inner(AppContextInner::new(&self.app_state));
-            return Some(handler(&window, &cx, event));
+            let window = Window::from_inner(WindowInner {
+                state: Rc::clone(self),
+            });
+            let cx = WindowContext::new(&app, &window);
+            return Some(handler(&cx, event));
         }
 
         None
@@ -306,9 +309,9 @@ pub struct WindowInner {
 }
 
 impl WindowInner {
-    pub fn open<H>(options: &WindowOptions, cx: &AppContext, handler: H) -> Result<WindowInner>
+    pub fn open<H>(options: &WindowOptions, app: &AppHandle, handler: H) -> Result<WindowInner>
     where
-        H: FnMut(&Window, &AppContext, Event) -> Response + 'static,
+        H: FnMut(&WindowContext, Event) -> Response + 'static,
     {
         unsafe {
             let window_name = to_wstring(&options.title);
@@ -353,7 +356,7 @@ impl WindowInner {
 
             let hwnd = CreateWindowExW(
                 WINDOW_EX_STYLE(0),
-                cx.inner.state.window_class,
+                app.inner.state.window_class,
                 PCWSTR(window_name.as_ptr()),
                 style,
                 x,
@@ -363,7 +366,7 @@ impl WindowInner {
                 parent,
                 HMENU(0),
                 hinstance(),
-                Some(Rc::as_ptr(cx.inner.state) as *const c_void),
+                Some(Rc::as_ptr(&app.inner.state) as *const c_void),
             );
             if hwnd == HWND(0) {
                 return Err(windows::core::Error::from_win32().into());
@@ -373,14 +376,14 @@ impl WindowInner {
                 hwnd: Cell::new(Some(hwnd)),
                 mouse_down_count: Cell::new(0),
                 cursor: Cell::new(Cursor::Arrow),
-                app_state: Rc::clone(cx.inner.state),
+                app_state: Rc::clone(&app.inner.state),
                 handler: RefCell::new(Box::new(handler)),
             });
 
             let state_ptr = Rc::into_raw(Rc::clone(&state));
             SetWindowLongPtrW(hwnd, msg::GWLP_USERDATA, state_ptr as isize);
 
-            cx.inner.state.windows.borrow_mut().insert(hwnd.0, Rc::clone(&state));
+            app.inner.state.windows.borrow_mut().insert(hwnd.0, Rc::clone(&state));
 
             Ok(WindowInner { state })
         }

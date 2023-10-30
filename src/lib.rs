@@ -3,9 +3,9 @@ mod backend;
 mod error;
 mod window;
 
-pub use app::{App, AppContext, AppMode, AppOptions, Timer};
+pub use app::{App, AppHandle, AppMode, AppOptions, Timer, TimerContext};
 pub use error::{Error, Result};
 pub use window::{
     Bitmap, Cursor, Event, MouseButton, Point, RawParent, Rect, Response, Size, Window,
-    WindowOptions,
+    WindowContext, WindowOptions,
 };

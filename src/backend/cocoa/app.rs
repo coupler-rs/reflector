@@ -13,7 +13,7 @@ use icrate::Foundation::{NSPoint, NSSize, NSThread};
 use super::display_links::DisplayLinks;
 use super::timer::{TimerInner, Timers};
 use super::window::{View, WindowState};
-use crate::{AppContext, AppMode, AppOptions, Result};
+use crate::{AppMode, AppOptions, Result, TimerContext};
 
 pub struct AppState {
     pub class: &'static AnyClass,
@@ -79,8 +79,11 @@ impl AppInner {
         })
     }
 
-    pub fn context(&self) -> AppContextInner {
-        AppContextInner::new(&self.state)
+    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerInner
+    where
+        H: FnMut(&TimerContext) + 'static,
+    {
+        self.state.timers.set_timer(&self.state, duration, handler)
     }
 
     pub fn run(&self) -> Result<()> {
@@ -91,13 +94,17 @@ impl AppInner {
         })
     }
 
+    pub fn exit(&self) {
+        unsafe {
+            NSApplication::sharedApplication().stop(None);
+        }
+    }
+
     pub fn poll(&self) -> Result<()> {
         Ok(())
     }
-}
 
-impl Drop for AppInner {
-    fn drop(&mut self) {
+    pub fn shutdown(&self) {
         autoreleasepool(|_| {
             for window_state in self.state.windows.take().into_values() {
                 window_state.close();
@@ -105,28 +112,5 @@ impl Drop for AppInner {
 
             self.state.timers.shutdown();
         })
-    }
-}
-
-pub struct AppContextInner<'a> {
-    pub state: &'a Rc<AppState>,
-}
-
-impl<'a> AppContextInner<'a> {
-    pub(super) fn new(state: &'a Rc<AppState>) -> AppContextInner<'a> {
-        AppContextInner { state }
-    }
-
-    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerInner
-    where
-        H: FnMut(&AppContext) + 'static,
-    {
-        self.state.timers.set_timer(self.state, duration, handler)
-    }
-
-    pub fn exit(&self) {
-        unsafe {
-            NSApplication::sharedApplication().stop(None);
-        }
     }
 }

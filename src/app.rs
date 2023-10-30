@@ -4,14 +4,46 @@ use std::time::Duration;
 
 use crate::{backend, Result};
 
+pub struct TimerContext<'a> {
+    app: &'a AppHandle,
+    timer: &'a Timer,
+    // ensure !Send and !Sync on all platforms
+    _marker: PhantomData<*mut ()>,
+}
+
+impl<'a> TimerContext<'a> {
+    pub(crate) fn new(app: &'a AppHandle, timer: &'a Timer) -> TimerContext<'a> {
+        TimerContext {
+            app,
+            timer,
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn app(&self) -> &AppHandle {
+        self.app
+    }
+
+    pub fn timer(&self) -> &Timer {
+        self.timer
+    }
+}
+
 #[derive(Clone)]
 pub struct Timer {
-    inner: backend::TimerInner,
+    pub(crate) inner: backend::TimerInner,
     // ensure !Send and !Sync on all platforms
     _marker: PhantomData<*mut ()>,
 }
 
 impl Timer {
+    pub(crate) fn from_inner(inner: backend::TimerInner) -> Timer {
+        Timer {
+            inner,
+            _marker: PhantomData,
+        }
+    }
+
     pub fn cancel(&self) {
         self.inner.cancel();
     }
@@ -58,7 +90,7 @@ impl AppOptions {
 }
 
 pub struct App {
-    inner: backend::AppInner,
+    handle: AppHandle,
     // ensure !Send and !Sync on all platforms
     _marker: PhantomData<*mut ()>,
 }
@@ -66,21 +98,27 @@ pub struct App {
 impl App {
     pub(crate) fn from_inner(inner: backend::AppInner) -> App {
         App {
-            inner,
+            handle: AppHandle::from_inner(inner),
             _marker: PhantomData,
         }
     }
 
-    pub fn context(&self) -> AppContext {
-        AppContext::from_inner(self.inner.context())
+    pub fn handle(&self) -> &AppHandle {
+        &self.handle
     }
 
     pub fn run(&self) -> Result<()> {
-        self.inner.run()
+        self.handle.inner.run()
     }
 
     pub fn poll(&self) -> Result<()> {
-        self.inner.poll()
+        self.handle.inner.poll()
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        self.handle.inner.shutdown();
     }
 }
 
@@ -96,19 +134,19 @@ use std::os::unix::io::{AsRawFd, RawFd};
 #[cfg(target_os = "linux")]
 impl AsRawFd for App {
     fn as_raw_fd(&self) -> RawFd {
-        self.inner.as_raw_fd()
+        self.handle.inner.as_raw_fd()
     }
 }
 
-pub struct AppContext<'a> {
-    pub(crate) inner: backend::AppContextInner<'a>,
+pub struct AppHandle {
+    pub(crate) inner: backend::AppInner,
     // ensure !Send and !Sync on all platforms
     _marker: PhantomData<*mut ()>,
 }
 
-impl<'a> AppContext<'a> {
-    pub(crate) fn from_inner(inner: backend::AppContextInner) -> AppContext {
-        AppContext {
+impl AppHandle {
+    pub(crate) fn from_inner(inner: backend::AppInner) -> AppHandle {
+        AppHandle {
             inner,
             _marker: PhantomData,
         }
@@ -116,7 +154,7 @@ impl<'a> AppContext<'a> {
 
     pub fn set_timer<H>(&self, duration: Duration, handler: H) -> Timer
     where
-        H: FnMut(&AppContext) + 'static,
+        H: FnMut(&TimerContext) + 'static,
     {
         Timer {
             inner: self.inner.set_timer(duration, handler),
@@ -129,8 +167,8 @@ impl<'a> AppContext<'a> {
     }
 }
 
-impl<'a> fmt::Debug for AppContext<'a> {
+impl fmt::Debug for AppHandle {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_struct("AppContext").finish_non_exhaustive()
+        fmt.debug_struct("AppHandle").finish_non_exhaustive()
     }
 }

@@ -12,7 +12,7 @@ mod timer;
 mod vsync;
 mod window;
 
-pub use app::{AppContextInner, AppInner};
+pub use app::AppInner;
 pub use timer::TimerInner;
 pub use window::WindowInner;
 

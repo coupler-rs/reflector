@@ -17,12 +17,12 @@ use icrate::AppKit::{
 };
 use icrate::Foundation::{NSInteger, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString};
 
-use super::app::{AppContextInner, AppState};
+use super::app::{AppInner, AppState};
 use super::surface::Surface;
 use super::OsError;
 use crate::{
-    AppContext, Bitmap, Cursor, Error, Event, MouseButton, Point, RawParent, Rect, Response,
-    Result, Size, Window, WindowOptions,
+    AppHandle, Bitmap, Cursor, Error, Event, MouseButton, Point, RawParent, Rect, Response, Result,
+    Size, Window, WindowContext, WindowOptions,
 };
 
 fn class_name() -> String {
@@ -299,7 +299,7 @@ pub struct WindowState {
     surface: RefCell<Option<Surface>>,
     cursor: Cell<Cursor>,
     app_state: Rc<AppState>,
-    handler: RefCell<Box<dyn FnMut(&Window, &AppContext, Event) -> Response>>,
+    handler: RefCell<Box<dyn FnMut(&WindowContext, Event) -> Response>>,
 }
 
 impl WindowState {
@@ -313,11 +313,14 @@ impl WindowState {
 
     pub fn handle_event(self: &Rc<WindowState>, event: Event) -> Option<Response> {
         if let Ok(mut handler) = self.handler.try_borrow_mut() {
+            let app = AppHandle::from_inner(AppInner {
+                state: Rc::clone(&self.app_state),
+            });
             let window = Window::from_inner(WindowInner {
                 state: self.clone(),
             });
-            let cx = AppContext::from_inner(AppContextInner::new(&self.app_state));
-            return Some(handler(&window, &cx, event));
+            let cx = WindowContext::new(&app, &window);
+            return Some(handler(&cx, event));
         }
 
         None
@@ -378,12 +381,12 @@ pub struct WindowInner {
 }
 
 impl WindowInner {
-    pub fn open<H>(options: &WindowOptions, cx: &AppContext, handler: H) -> Result<WindowInner>
+    pub fn open<H>(options: &WindowOptions, app: &AppHandle, handler: H) -> Result<WindowInner>
     where
-        H: FnMut(&Window, &AppContext, Event) -> Response + 'static,
+        H: FnMut(&WindowContext, Event) -> Response + 'static,
     {
         autoreleasepool(|_| {
-            let app_state = cx.inner.state;
+            let app_state = &app.inner.state;
 
             let parent_view = if let Some(parent) = options.parent {
                 if let RawParent::Cocoa(parent_view) = parent {
