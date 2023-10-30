@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -12,7 +11,7 @@ use crate::AppContext;
 struct TimerState {
     timer_id: Cell<Option<usize>>,
     app_state: Rc<AppState>,
-    handler: RefCell<Box<dyn FnMut(&mut dyn Any, &Rc<AppState>)>>,
+    handler: RefCell<Box<dyn FnMut(&AppContext)>>,
 }
 
 impl TimerState {
@@ -36,31 +35,22 @@ impl Timers {
         }
     }
 
-    pub fn set_timer<T, H>(
+    pub fn set_timer<H>(
         &self,
         app_state: &Rc<AppState>,
         duration: Duration,
         handler: H,
     ) -> TimerInner
     where
-        T: 'static,
-        H: 'static,
-        H: FnMut(&mut T, &AppContext<T>),
+        H: FnMut(&AppContext) + 'static,
     {
         let timer_id = self.next_id.get();
         self.next_id.set(timer_id + 1);
 
-        let mut handler = handler;
-        let handler_wrapper = move |data_any: &mut dyn Any, app_state: &Rc<AppState>| {
-            let data = data_any.downcast_mut::<T>().unwrap();
-            let cx = AppContext::from_inner(AppContextInner::new(app_state));
-            handler(data, &cx)
-        };
-
         let state = Rc::new(TimerState {
             timer_id: Cell::new(Some(timer_id)),
             app_state: Rc::clone(app_state),
-            handler: RefCell::new(Box::new(handler_wrapper)),
+            handler: RefCell::new(Box::new(handler)),
         });
 
         self.timers.borrow_mut().insert(timer_id, Rc::clone(&state));
@@ -76,11 +66,8 @@ impl Timers {
     pub fn handle_timer(&self, app_state: &Rc<AppState>, timer_id: usize) {
         let timer_state = app_state.timers.timers.borrow().get(&timer_id).cloned();
         if let Some(timer_state) = timer_state {
-            if let Ok(mut data) = app_state.data.try_borrow_mut() {
-                if let Some(data) = &mut *data {
-                    timer_state.handler.borrow_mut()(&mut **data, &app_state);
-                }
-            }
+            let cx = AppContext::from_inner(AppContextInner::new(app_state));
+            timer_state.handler.borrow_mut()(&cx);
         }
     }
 

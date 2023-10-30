@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::ffi::{c_int, c_void};
 use std::rc::Rc;
@@ -33,7 +32,7 @@ pub struct WindowState {
     pub shm_state: RefCell<Option<ShmState>>,
     pub expose_rects: RefCell<Vec<Rect>>,
     pub app_state: Rc<AppState>,
-    pub handler: RefCell<Box<dyn FnMut(&mut dyn Any, &Rc<AppState>, Event) -> Response>>,
+    pub handler: RefCell<Box<dyn FnMut(&crate::Window, &AppContext, Event) -> Response>>,
 }
 
 impl WindowState {
@@ -92,6 +91,14 @@ impl WindowState {
         }
     }
 
+    pub fn handle_event(self: &Rc<WindowState>, event: Event) -> Response {
+        let window = crate::Window::from_inner(WindowInner {
+            state: self.clone(),
+        });
+        let cx = AppContext::from_inner(AppContextInner::new(&self.app_state));
+        self.handler.borrow_mut()(&window, &cx, event)
+    }
+
     pub fn close(&self) {
         if let Some(window_id) = self.window_id.take() {
             let _ = self.app_state.connection.destroy_window(window_id);
@@ -111,15 +118,9 @@ pub struct WindowInner {
 }
 
 impl WindowInner {
-    pub fn open<T, H>(
-        options: &WindowOptions,
-        cx: &AppContext<T>,
-        handler: H,
-    ) -> Result<WindowInner>
+    pub fn open<H>(options: &WindowOptions, cx: &AppContext, handler: H) -> Result<WindowInner>
     where
-        T: 'static,
-        H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
-        H: 'static,
+        H: FnMut(&crate::Window, &AppContext, Event) -> Response + 'static,
     {
         let connection = &cx.inner.state.connection;
 
@@ -190,21 +191,13 @@ impl WindowInner {
 
         connection.flush()?;
 
-        let mut handler = handler;
-        let handler_wrapper =
-            move |data_any: &mut dyn Any, app_state: &Rc<AppState>, event: Event<'_>| {
-                let data = data_any.downcast_mut::<T>().unwrap();
-                let cx = AppContext::from_inner(AppContextInner::new(app_state));
-                handler(data, &cx, event)
-            };
-
         let state = Rc::new(WindowState {
             window_id: Cell::new(Some(window_id)),
             gc_id: Cell::new(Some(gc_id)),
             shm_state: RefCell::new(shm_state),
             expose_rects: RefCell::new(Vec::new()),
             app_state: Rc::clone(&cx.inner.state),
-            handler: RefCell::new(Box::new(handler_wrapper)),
+            handler: RefCell::new(Box::new(handler)),
         });
 
         cx.inner.state.windows.borrow_mut().insert(window_id, Rc::clone(&state));

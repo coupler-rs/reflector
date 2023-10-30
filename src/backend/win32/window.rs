@@ -1,5 +1,4 @@
 use std::alloc::{alloc, dealloc, Layout};
-use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::ffi::{c_int, c_void};
 use std::mem::MaybeUninit;
@@ -20,7 +19,7 @@ use super::app::{AppContextInner, AppState};
 use super::{class_name, hinstance, to_wstring};
 use crate::{
     AppContext, Bitmap, Cursor, Error, Event, MouseButton, Point, RawParent, Rect, Response,
-    Result, Size, WindowOptions,
+    Result, Size, Window, WindowOptions,
 };
 
 #[allow(non_snake_case)]
@@ -256,7 +255,7 @@ pub struct WindowState {
     mouse_down_count: Cell<isize>,
     cursor: Cell<Cursor>,
     app_state: Rc<AppState>,
-    handler: RefCell<Box<dyn FnMut(&mut dyn Any, &Rc<AppState>, Event) -> Response>>,
+    handler: RefCell<Box<dyn FnMut(&Window, &AppContext, Event) -> Response>>,
 }
 
 impl WindowState {
@@ -282,13 +281,13 @@ impl WindowState {
         }
     }
 
-    pub fn handle_event(&self, event: Event) -> Option<Response> {
+    pub fn handle_event(self: &Rc<WindowState>, event: Event) -> Option<Response> {
         if let Ok(mut handler) = self.handler.try_borrow_mut() {
-            if let Ok(mut data) = self.app_state.data.try_borrow_mut() {
-                if let Some(data) = &mut *data {
-                    return Some(handler(&mut **data, &self.app_state, event));
-                }
-            }
+            let window = Window::from_inner(WindowInner {
+                state: self.clone(),
+            });
+            let cx = AppContext::from_inner(AppContextInner::new(&self.app_state));
+            return Some(handler(&window, &cx, event));
         }
 
         None
@@ -307,15 +306,9 @@ pub struct WindowInner {
 }
 
 impl WindowInner {
-    pub fn open<T, H>(
-        options: &WindowOptions,
-        cx: &AppContext<T>,
-        handler: H,
-    ) -> Result<WindowInner>
+    pub fn open<H>(options: &WindowOptions, cx: &AppContext, handler: H) -> Result<WindowInner>
     where
-        T: 'static,
-        H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
-        H: 'static,
+        H: FnMut(&Window, &AppContext, Event) -> Response + 'static,
     {
         unsafe {
             let window_name = to_wstring(&options.title);
@@ -376,20 +369,12 @@ impl WindowInner {
                 return Err(windows::core::Error::from_win32().into());
             }
 
-            let mut handler = handler;
-            let handler_wrapper =
-                move |data_any: &mut dyn Any, app_state: &Rc<AppState>, event: Event<'_>| {
-                    let data = data_any.downcast_mut::<T>().unwrap();
-                    let cx = AppContext::from_inner(AppContextInner::new(app_state));
-                    handler(data, &cx, event)
-                };
-
             let state = Rc::new(WindowState {
                 hwnd: Cell::new(Some(hwnd)),
                 mouse_down_count: Cell::new(0),
                 cursor: Cell::new(Cursor::Arrow),
                 app_state: Rc::clone(cx.inner.state),
-                handler: RefCell::new(Box::new(handler_wrapper)),
+                handler: RefCell::new(Box::new(handler)),
             });
 
             let state_ptr = Rc::into_raw(Rc::clone(&state));

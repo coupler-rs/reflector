@@ -6,7 +6,6 @@ const WIDTH: usize = 512;
 const HEIGHT: usize = 512;
 
 struct State {
-    window: Window,
     framebuffer: Vec<u32>,
     width: usize,
     height: usize,
@@ -19,14 +18,20 @@ impl Drop for State {
 }
 
 impl State {
-    fn handle_event(&mut self, cx: &AppContext<Self>, event: Event) -> Response {
+    fn handle_event(&mut self, window: &Window, cx: &AppContext, event: Event) -> Response {
         match event {
             Event::Expose(rects) => {
                 println!("expose: {:?}", rects);
-                self.window.present(Bitmap::new(&self.framebuffer, self.width, self.height));
             }
             Event::Frame => {
                 println!("frame");
+
+                let scale = window.scale();
+                self.width = (WIDTH as f64 * scale) as usize;
+                self.height = (HEIGHT as f64 * scale) as usize;
+                self.framebuffer.resize(self.width * self.height, 0xFFFF00FF);
+
+                window.present(Bitmap::new(&self.framebuffer, self.width, self.height));
             }
             Event::MouseMove(pos) => {
                 println!("mouse move: {:?}", pos);
@@ -53,34 +58,27 @@ impl State {
 }
 
 fn main() {
-    let app = AppOptions::new()
-        .build(|cx| {
-            let window = WindowOptions::new()
-                .title("window")
-                .size(Size::new(512.0, 512.0))
-                .open(cx, State::handle_event)
-                .unwrap();
+    let app = AppOptions::new().build().unwrap();
 
-            cx.set_timer(Duration::from_millis(1000), |_, _| {
-                println!("timer");
-            });
+    let mut state = State {
+        framebuffer: Vec::new(),
+        width: 0,
+        height: 0,
+    };
 
-            let scale = window.scale();
-            let width = (WIDTH as f64 * scale) as usize;
-            let height = (HEIGHT as f64 * scale) as usize;
-            let framebuffer = vec![0xFFFF00FF; width * height];
-            window.present(Bitmap::new(&framebuffer, width, height));
-
-            window.show();
-
-            Ok(State {
-                window,
-                framebuffer,
-                width,
-                height,
-            })
+    let window = WindowOptions::new()
+        .title("window")
+        .size(Size::new(512.0, 512.0))
+        .open(&app.context(), move |window, cx, event| {
+            state.handle_event(window, cx, event)
         })
         .unwrap();
+
+    app.context().set_timer(Duration::from_millis(1000), |_| {
+        println!("timer");
+    });
+
+    window.show();
 
     app.run().unwrap();
 }

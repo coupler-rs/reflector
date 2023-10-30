@@ -186,11 +186,9 @@ impl WindowOptions {
         self
     }
 
-    pub fn open<T, H>(&self, cx: &AppContext<T>, handler: H) -> Result<Window>
+    pub fn open<H>(&self, cx: &AppContext, handler: H) -> Result<Window>
     where
-        H: 'static,
-        H: FnMut(&mut T, &AppContext<T>, Event) -> Response,
-        T: 'static,
+        H: FnMut(&Window, &AppContext, Event) -> Response + 'static,
     {
         Ok(Window::from_inner(backend::WindowInner::open(
             self, cx, handler,
@@ -206,7 +204,7 @@ pub struct Window {
 }
 
 impl Window {
-    fn from_inner(inner: backend::WindowInner) -> Window {
+    pub(crate) fn from_inner(inner: backend::WindowInner) -> Window {
         Window {
             inner,
             _marker: PhantomData,

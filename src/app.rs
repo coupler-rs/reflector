@@ -52,27 +52,27 @@ impl AppOptions {
         self
     }
 
-    pub fn build<T, F>(&self, build: F) -> Result<App<T>>
-    where
-        F: FnOnce(&AppContext<T>) -> Result<T>,
-        T: 'static,
-    {
-        Ok(App::from_inner(backend::AppInner::new(self, build)?))
+    pub fn build(&self) -> Result<App> {
+        Ok(App::from_inner(backend::AppInner::new(self)?))
     }
 }
 
-pub struct App<T> {
-    inner: backend::AppInner<T>,
+pub struct App {
+    inner: backend::AppInner,
     // ensure !Send and !Sync on all platforms
     _marker: PhantomData<*mut ()>,
 }
 
-impl<T: 'static> App<T> {
-    pub(crate) fn from_inner(inner: backend::AppInner<T>) -> App<T> {
+impl App {
+    pub(crate) fn from_inner(inner: backend::AppInner) -> App {
         App {
             inner,
             _marker: PhantomData,
         }
+    }
+
+    pub fn context(&self) -> AppContext {
+        AppContext::from_inner(self.inner.context())
     }
 
     pub fn run(&self) -> Result<()> {
@@ -84,7 +84,7 @@ impl<T: 'static> App<T> {
     }
 }
 
-impl<T> fmt::Debug for App<T> {
+impl fmt::Debug for App {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("App").finish_non_exhaustive()
     }
@@ -94,20 +94,20 @@ impl<T> fmt::Debug for App<T> {
 use std::os::unix::io::{AsRawFd, RawFd};
 
 #[cfg(target_os = "linux")]
-impl<T> AsRawFd for App<T> {
+impl AsRawFd for App {
     fn as_raw_fd(&self) -> RawFd {
         self.inner.as_raw_fd()
     }
 }
 
-pub struct AppContext<'a, T> {
-    pub(crate) inner: backend::AppContextInner<'a, T>,
+pub struct AppContext<'a> {
+    pub(crate) inner: backend::AppContextInner<'a>,
     // ensure !Send and !Sync on all platforms
     _marker: PhantomData<*mut ()>,
 }
 
-impl<'a, T: 'static> AppContext<'a, T> {
-    pub(crate) fn from_inner(inner: backend::AppContextInner<T>) -> AppContext<T> {
+impl<'a> AppContext<'a> {
+    pub(crate) fn from_inner(inner: backend::AppContextInner) -> AppContext {
         AppContext {
             inner,
             _marker: PhantomData,
@@ -116,8 +116,7 @@ impl<'a, T: 'static> AppContext<'a, T> {
 
     pub fn set_timer<H>(&self, duration: Duration, handler: H) -> Timer
     where
-        H: 'static,
-        H: FnMut(&mut T, &AppContext<T>),
+        H: FnMut(&AppContext) + 'static,
     {
         Timer {
             inner: self.inner.set_timer(duration, handler),
@@ -130,7 +129,7 @@ impl<'a, T: 'static> AppContext<'a, T> {
     }
 }
 
-impl<'a, T> fmt::Debug for AppContext<'a, T> {
+impl<'a> fmt::Debug for AppContext<'a> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_struct("AppContext").finish_non_exhaustive()
     }

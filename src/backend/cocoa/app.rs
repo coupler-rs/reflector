@@ -1,7 +1,5 @@
-use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::marker::PhantomData;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -23,7 +21,6 @@ pub struct AppState {
     pub timers: Timers,
     pub display_links: DisplayLinks,
     pub windows: RefCell<HashMap<*const WindowState, Rc<WindowState>>>,
-    pub data: RefCell<Option<Box<dyn Any>>>,
 }
 
 impl Drop for AppState {
@@ -34,17 +31,12 @@ impl Drop for AppState {
     }
 }
 
-pub struct AppInner<T> {
+pub struct AppInner {
     pub state: Rc<AppState>,
-    _marker: PhantomData<T>,
 }
 
-impl<T: 'static> AppInner<T> {
-    pub fn new<F>(options: &AppOptions, build: F) -> Result<AppInner<T>>
-    where
-        F: FnOnce(&AppContext<T>) -> Result<T>,
-        T: 'static,
-    {
+impl AppInner {
+    pub fn new(options: &AppOptions) -> Result<AppInner> {
         autoreleasepool(|_| {
             assert!(
                 NSThread::isMainThread_class(),
@@ -71,18 +63,9 @@ impl<T: 'static> AppInner<T> {
                 timers: Timers::new(),
                 display_links: DisplayLinks::new(),
                 windows: RefCell::new(HashMap::new()),
-                data: RefCell::new(None),
             });
 
             state.display_links.init(&state);
-
-            let cx = AppContext::from_inner(AppContextInner {
-                state: &state,
-                _marker: PhantomData,
-            });
-            let data = build(&cx)?;
-
-            state.data.replace(Some(Box::new(data)));
 
             if options.mode == AppMode::Owner {
                 unsafe {
@@ -92,11 +75,12 @@ impl<T: 'static> AppInner<T> {
                 }
             }
 
-            Ok(AppInner {
-                state,
-                _marker: PhantomData,
-            })
+            Ok(AppInner { state })
         })
+    }
+
+    pub fn context(&self) -> AppContextInner {
+        AppContextInner::new(&self.state)
     }
 
     pub fn run(&self) -> Result<()> {
@@ -112,39 +96,30 @@ impl<T: 'static> AppInner<T> {
     }
 }
 
-impl<T> Drop for AppInner<T> {
+impl Drop for AppInner {
     fn drop(&mut self) {
         autoreleasepool(|_| {
-            if let Ok(mut data) = self.state.data.try_borrow_mut() {
-                drop(data.take());
-
-                for window_state in self.state.windows.take().into_values() {
-                    window_state.close();
-                }
-
-                self.state.timers.shutdown();
+            for window_state in self.state.windows.take().into_values() {
+                window_state.close();
             }
+
+            self.state.timers.shutdown();
         })
     }
 }
 
-pub struct AppContextInner<'a, T> {
+pub struct AppContextInner<'a> {
     pub state: &'a Rc<AppState>,
-    _marker: PhantomData<T>,
 }
 
-impl<'a, T: 'static> AppContextInner<'a, T> {
-    pub(super) fn new(state: &'a Rc<AppState>) -> AppContextInner<'a, T> {
-        AppContextInner {
-            state,
-            _marker: PhantomData,
-        }
+impl<'a> AppContextInner<'a> {
+    pub(super) fn new(state: &'a Rc<AppState>) -> AppContextInner<'a> {
+        AppContextInner { state }
     }
 
     pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerInner
     where
-        H: 'static,
-        H: FnMut(&mut T, &AppContext<T>),
+        H: FnMut(&AppContext) + 'static,
     {
         self.state.timers.set_timer(self.state, duration, handler)
     }

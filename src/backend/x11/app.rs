@@ -1,6 +1,5 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::marker::PhantomData;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -68,17 +67,12 @@ impl Drop for AppState {
     }
 }
 
-pub struct AppInner<T> {
+pub struct AppInner {
     state: Rc<AppState>,
-    data: RefCell<T>,
 }
 
-impl<T: 'static> AppInner<T> {
-    pub fn new<F>(_options: &AppOptions, build: F) -> Result<AppInner<T>>
-    where
-        F: FnOnce(&AppContext<T>) -> Result<T>,
-        T: 'static,
-    {
+impl AppInner {
+    pub fn new(_options: &AppOptions) -> Result<AppInner> {
         let (connection, screen_index) = x11rb::connect(None)?;
         let atoms = Atoms::new(&connection)?.reply()?;
         let shm_supported = connection.extension_information(shm::X11_EXTENSION_NAME)?.is_some();
@@ -106,15 +100,13 @@ impl<T: 'static> AppInner<T> {
             timers: Timers::new(),
         });
 
-        let cx = AppContext::from_inner(AppContextInner::new(&state));
-        let data = build(&cx)?;
-
-        let inner = AppInner {
-            state,
-            data: RefCell::new(data),
-        };
+        let inner = AppInner { state };
 
         Ok(inner)
+    }
+
+    pub fn context(&self) -> AppContextInner {
+        AppContextInner::new(&self.state)
     }
 
     pub fn run(&self) -> Result<()> {
@@ -124,7 +116,7 @@ impl<T: 'static> AppInner<T> {
 
         while self.state.running.get() {
             self.drain_events()?;
-            self.state.timers.poll(&mut *self.data.borrow_mut(), &self.state);
+            self.state.timers.poll(&self.state);
             self.drain_events()?;
 
             if !self.state.running.get() {
@@ -154,7 +146,7 @@ impl<T: 'static> AppInner<T> {
 
     pub fn poll(&self) -> Result<()> {
         self.drain_events()?;
-        self.state.timers.poll(&mut *self.data.borrow_mut(), &self.state);
+        self.state.timers.poll(&self.state);
         self.drain_events()?;
 
         Ok(())
@@ -175,11 +167,7 @@ impl<T: 'static> AppInner<T> {
 
                         if event.count == 0 {
                             let rects = window.expose_rects.take();
-                            window.handler.borrow_mut()(
-                                &mut *self.data.borrow_mut(),
-                                &self.state,
-                                Event::Expose(&rects),
-                            );
+                            window.handle_event(Event::Expose(&rects));
                         }
                     }
                 }
@@ -189,11 +177,7 @@ impl<T: 'static> AppInner<T> {
                     {
                         let window = self.state.windows.borrow().get(&event.window).cloned();
                         if let Some(window) = window {
-                            window.handler.borrow_mut()(
-                                &mut *self.data.borrow_mut(),
-                                &self.state,
-                                Event::Close,
-                            );
+                            window.handle_event(Event::Close);
                         }
                     }
                 }
@@ -205,28 +189,16 @@ impl<T: 'static> AppInner<T> {
                             y: event.event_y as f64,
                         };
 
-                        window.handler.borrow_mut()(
-                            &mut *self.data.borrow_mut(),
-                            &self.state,
-                            Event::MouseMove(point),
-                        );
+                        window.handle_event(Event::MouseMove(point));
                     }
                 }
                 protocol::Event::ButtonPress(event) => {
                     let window = self.state.windows.borrow().get(&event.event).cloned();
                     if let Some(window) = window {
                         if let Some(button) = mouse_button_from_code(event.detail) {
-                            window.handler.borrow_mut()(
-                                &mut *self.data.borrow_mut(),
-                                &self.state,
-                                Event::MouseDown(button),
-                            );
+                            window.handle_event(Event::MouseDown(button));
                         } else if let Some(delta) = scroll_delta_from_code(event.detail) {
-                            window.handler.borrow_mut()(
-                                &mut *self.data.borrow_mut(),
-                                &self.state,
-                                Event::Scroll(delta),
-                            );
+                            window.handle_event(Event::Scroll(delta));
                         }
                     }
                 }
@@ -234,11 +206,7 @@ impl<T: 'static> AppInner<T> {
                     let window = self.state.windows.borrow().get(&event.event).cloned();
                     if let Some(window) = window {
                         if let Some(button) = mouse_button_from_code(event.detail) {
-                            window.handler.borrow_mut()(
-                                &mut *self.data.borrow_mut(),
-                                &self.state,
-                                Event::MouseUp(button),
-                            );
+                            window.handle_event(Event::MouseUp(button));
                         }
                     }
                 }
@@ -250,7 +218,7 @@ impl<T: 'static> AppInner<T> {
     }
 }
 
-impl<T> Drop for AppInner<T> {
+impl Drop for AppInner {
     fn drop(&mut self) {
         for window_state in self.state.windows.take().into_values() {
             window_state.close();
@@ -259,29 +227,25 @@ impl<T> Drop for AppInner<T> {
     }
 }
 
-impl<T> AsRawFd for AppInner<T> {
+impl AsRawFd for AppInner {
     fn as_raw_fd(&self) -> RawFd {
         self.state.connection.stream().as_raw_fd()
     }
 }
 
-pub struct AppContextInner<'a, T> {
+pub struct AppContextInner<'a> {
     pub state: &'a Rc<AppState>,
-    _marker: PhantomData<T>,
 }
 
-impl<'a, T: 'static> AppContextInner<'a, T> {
-    pub(super) fn new(state: &'a Rc<AppState>) -> AppContextInner<'a, T> {
-        AppContextInner {
-            state,
-            _marker: PhantomData,
-        }
+impl<'a> AppContextInner<'a> {
+    pub(super) fn new(state: &'a Rc<AppState>) -> AppContextInner<'a> {
+        AppContextInner { state }
     }
 
     pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerInner
     where
         H: 'static,
-        H: FnMut(&mut T, &AppContext<T>),
+        H: FnMut(&AppContext),
     {
         self.state.timers.set_timer(self.state, duration, handler)
     }

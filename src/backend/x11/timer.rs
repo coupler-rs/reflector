@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
@@ -12,7 +11,7 @@ pub type TimerId = usize;
 
 struct TimerState {
     duration: Duration,
-    handler: RefCell<Box<dyn FnMut(&mut dyn Any, &Rc<AppState>)>>,
+    handler: RefCell<Box<dyn FnMut(&AppContext)>>,
 }
 
 #[derive(Clone)]
@@ -60,34 +59,25 @@ impl Timers {
         self.queue.borrow().peek().map(|e| e.time)
     }
 
-    pub fn set_timer<T, H>(
+    pub fn set_timer<H>(
         &self,
         app_state: &Rc<AppState>,
         duration: Duration,
         handler: H,
     ) -> TimerInner
     where
-        T: 'static,
-        H: 'static,
-        H: FnMut(&mut T, &AppContext<T>),
+        H: FnMut(&AppContext) + 'static,
     {
         let now = Instant::now();
 
         let timer_id = self.next_id.get();
         self.next_id.set(timer_id + 1);
 
-        let mut handler = handler;
-        let handler_wrapper = move |data_any: &mut dyn Any, app_state: &Rc<AppState>| {
-            let data = data_any.downcast_mut::<T>().unwrap();
-            let cx = AppContext::from_inner(AppContextInner::new(app_state));
-            handler(data, &cx)
-        };
-
         self.timers.borrow_mut().insert(
             timer_id,
             Rc::new(TimerState {
                 duration,
-                handler: RefCell::new(Box::new(handler_wrapper)),
+                handler: RefCell::new(Box::new(handler)),
             }),
         );
 
@@ -102,7 +92,7 @@ impl Timers {
         }
     }
 
-    pub fn poll(&self, data: &mut dyn Any, app_state: &Rc<AppState>) {
+    pub fn poll(&self, app_state: &Rc<AppState>) {
         let now = Instant::now();
 
         // Check with < and not <= so that we don't process a timer twice during this loop
@@ -111,7 +101,8 @@ impl Timers {
 
             // If we don't find the timer in `self.timers`, it has been canceled
             if let Some(timer) = self.timers.borrow().get(&next.timer_id).cloned() {
-                timer.handler.borrow_mut()(data, app_state);
+                let cx = AppContext::from_inner(AppContextInner::new(app_state));
+                timer.handler.borrow_mut()(&cx);
 
                 // If we fall behind by more than one timer interval, reset the timer's phase
                 let next_time = (next.time + timer.duration).max(now);

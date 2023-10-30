@@ -1,7 +1,5 @@
-use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::marker::PhantomData;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 use std::{mem, ptr};
@@ -21,7 +19,7 @@ use super::timer::{TimerInner, Timers};
 use super::vsync::VsyncThreads;
 use super::window::{self, WindowState};
 use super::{class_name, hinstance, to_wstring, WM_USER_VBLANK};
-use crate::{AppContext, AppMode, AppOptions, Error, Result};
+use crate::{AppContext, AppMode, AppOptions, Result};
 
 fn register_message_class() -> Result<PCWSTR> {
     let class_name = to_wstring(&class_name("message-"));
@@ -93,7 +91,6 @@ pub struct AppState {
     pub timers: Timers,
     pub vsync_threads: VsyncThreads,
     pub windows: RefCell<HashMap<isize, Rc<WindowState>>>,
-    pub data: RefCell<Option<Box<dyn Any>>>,
 }
 
 impl Drop for AppState {
@@ -109,17 +106,12 @@ impl Drop for AppState {
     }
 }
 
-pub struct AppInner<T> {
+pub struct AppInner {
     pub state: Rc<AppState>,
-    _marker: PhantomData<T>,
 }
 
-impl<T: 'static> AppInner<T> {
-    pub fn new<F>(options: &AppOptions, build: F) -> Result<AppInner<T>>
-    where
-        F: FnOnce(&AppContext<T>) -> Result<T>,
-        T: 'static,
-    {
+impl AppInner {
+    pub fn new(options: &AppOptions) -> Result<AppInner> {
         let message_class = register_message_class()?;
 
         let message_hwnd = unsafe {
@@ -161,7 +153,6 @@ impl<T: 'static> AppInner<T> {
             timers,
             vsync_threads,
             windows: RefCell::new(HashMap::new()),
-            data: RefCell::new(None),
         });
 
         let state_ptr = Weak::into_raw(Rc::downgrade(&state));
@@ -171,25 +162,14 @@ impl<T: 'static> AppInner<T> {
 
         state.vsync_threads.init(&state);
 
-        let cx = AppContext::from_inner(AppContextInner {
-            state: &state,
-            _marker: PhantomData,
-        });
-        let data = build(&cx)?;
+        Ok(AppInner { state })
+    }
 
-        state.data.replace(Some(Box::new(data)));
-
-        Ok(AppInner {
-            state,
-            _marker: PhantomData,
-        })
+    pub fn context(&self) -> AppContextInner {
+        AppContextInner::new(&self.state)
     }
 
     pub fn run(&self) -> Result<()> {
-        if self.state.data.try_borrow().is_err() {
-            return Err(Error::InsideEventHandler);
-        }
-
         loop {
             unsafe {
                 let mut msg: MSG = mem::zeroed();
@@ -208,10 +188,6 @@ impl<T: 'static> AppInner<T> {
     }
 
     pub fn poll(&self) -> Result<()> {
-        if self.state.data.try_borrow().is_err() {
-            return Err(Error::InsideEventHandler);
-        }
-
         loop {
             unsafe {
                 let mut msg: MSG = mem::zeroed();
@@ -228,37 +204,28 @@ impl<T: 'static> AppInner<T> {
     }
 }
 
-impl<T> Drop for AppInner<T> {
+impl Drop for AppInner {
     fn drop(&mut self) {
-        if let Ok(mut data) = self.state.data.try_borrow_mut() {
-            drop(data.take());
-
-            for window_state in self.state.windows.take().into_values() {
-                window_state.close();
-            }
-
-            self.state.timers.shutdown();
+        for window_state in self.state.windows.take().into_values() {
+            window_state.close();
         }
+
+        self.state.timers.shutdown();
     }
 }
 
-pub struct AppContextInner<'a, T> {
+pub struct AppContextInner<'a> {
     pub state: &'a Rc<AppState>,
-    pub _marker: PhantomData<T>,
 }
 
-impl<'a, T: 'static> AppContextInner<'a, T> {
-    pub(super) fn new(state: &'a Rc<AppState>) -> AppContextInner<'a, T> {
-        AppContextInner {
-            state,
-            _marker: PhantomData,
-        }
+impl<'a> AppContextInner<'a> {
+    pub(super) fn new(state: &'a Rc<AppState>) -> AppContextInner<'a> {
+        AppContextInner { state }
     }
 
     pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerInner
     where
-        H: 'static,
-        H: FnMut(&mut T, &AppContext<T>),
+        H: FnMut(&AppContext) + 'static,
     {
         self.state.timers.set_timer(self.state, duration, handler)
     }

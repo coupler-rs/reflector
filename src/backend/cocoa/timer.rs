@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ffi::c_void;
@@ -30,17 +29,14 @@ extern "C" fn release(info: *const c_void) {
 extern "C" fn callback(_timer: CFRunLoopTimerRef, info: *mut c_void) {
     let state = unsafe { &*(info as *const TimerState) };
 
-    if let Ok(mut data) = state.app_state.data.try_borrow_mut() {
-        if let Some(data) = &mut *data {
-            state.handler.borrow_mut()(&mut **data, &state.app_state);
-        }
-    }
+    let cx = AppContext::from_inner(AppContextInner::new(&state.app_state));
+    state.handler.borrow_mut()(&cx);
 }
 
 struct TimerState {
     timer_ref: Cell<Option<CFRunLoopTimerRef>>,
     app_state: Rc<AppState>,
-    handler: RefCell<Box<dyn FnMut(&mut dyn Any, &Rc<AppState>)>>,
+    handler: RefCell<Box<dyn FnMut(&AppContext)>>,
 }
 
 impl TimerState {
@@ -65,28 +61,19 @@ impl Timers {
         }
     }
 
-    pub fn set_timer<T, H>(
+    pub fn set_timer<H>(
         &self,
         app_state: &Rc<AppState>,
         duration: Duration,
         handler: H,
     ) -> TimerInner
     where
-        T: 'static,
-        H: 'static,
-        H: FnMut(&mut T, &AppContext<T>),
+        H: FnMut(&AppContext) + 'static,
     {
-        let mut handler = handler;
-        let handler_wrapper = move |data_any: &mut dyn Any, app_state: &Rc<AppState>| {
-            let data = data_any.downcast_mut::<T>().unwrap();
-            let cx = AppContext::from_inner(AppContextInner::new(app_state));
-            handler(data, &cx)
-        };
-
         let state = Rc::new(TimerState {
             timer_ref: Cell::new(None),
             app_state: Rc::clone(app_state),
-            handler: RefCell::new(Box::new(handler_wrapper)),
+            handler: RefCell::new(Box::new(handler)),
         });
 
         let mut context = CFRunLoopTimerContext {
