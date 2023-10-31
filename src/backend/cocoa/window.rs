@@ -363,15 +363,13 @@ impl WindowState {
     }
 
     pub fn close(&self) {
-        autoreleasepool(|_| {
-            if let Some(window) = self.window.take() {
-                unsafe { window.close() };
-            }
+        if let Some(window) = self.window.take() {
+            unsafe { window.close() };
+        }
 
-            if let Some(view) = self.view.take() {
-                unsafe { view.removeFromSuperview() };
-            }
-        })
+        if let Some(view) = self.view.take() {
+            unsafe { view.removeFromSuperview() };
+        }
     }
 }
 
@@ -522,55 +520,63 @@ impl WindowInner {
     }
 
     pub fn hide(&self) {
-        if let Some(window) = self.state.window() {
-            unsafe { window.orderOut(None) };
-        }
+        autoreleasepool(|_| {
+            if let Some(window) = self.state.window() {
+                unsafe { window.orderOut(None) };
+            }
 
-        if let Some(view) = self.state.view() {
-            unsafe { view.setHidden(true) };
-        }
+            if let Some(view) = self.state.view() {
+                unsafe { view.setHidden(true) };
+            }
+        })
     }
 
     pub fn size(&self) -> Size {
-        if let Some(view) = self.state.view() {
-            let frame = unsafe { view.frame() };
+        autoreleasepool(|_| {
+            if let Some(view) = self.state.view() {
+                let frame = unsafe { view.frame() };
 
-            Size::new(frame.size.width, frame.size.height)
-        } else {
-            Size::new(0.0, 0.0)
-        }
+                Size::new(frame.size.width, frame.size.height)
+            } else {
+                Size::new(0.0, 0.0)
+            }
+        })
     }
 
     pub fn scale(&self) -> f64 {
-        if let Some(view) = self.state.view() {
-            if let Some(window) = unsafe { view.window() } {
-                return unsafe { window.backingScaleFactor() };
-            } else if let Some(screen) = unsafe { NSScreen::screens() }.get(0) {
-                return unsafe { screen.backingScaleFactor() };
+        autoreleasepool(|_| {
+            if let Some(view) = self.state.view() {
+                if let Some(window) = unsafe { view.window() } {
+                    return unsafe { window.backingScaleFactor() };
+                } else if let Some(screen) = unsafe { NSScreen::screens() }.get(0) {
+                    return unsafe { screen.backingScaleFactor() };
+                }
             }
-        }
 
-        1.0
+            1.0
+        })
     }
 
     pub fn present(&self, bitmap: Bitmap) {
-        if let Some(surface) = &mut *self.state.surface.borrow_mut() {
-            let width = surface.width;
-            let height = surface.height;
-            let copy_width = bitmap.width().min(width);
-            let copy_height = bitmap.height().min(height);
+        autoreleasepool(|_| {
+            if let Some(surface) = &mut *self.state.surface.borrow_mut() {
+                let width = surface.width;
+                let height = surface.height;
+                let copy_width = bitmap.width().min(width);
+                let copy_height = bitmap.height().min(height);
 
-            surface.with_buffer(|buffer| {
-                for row in 0..copy_height {
-                    let src =
-                        &bitmap.data()[row * bitmap.width()..row * bitmap.width() + copy_width];
-                    let dst = &mut buffer[row * width..row * width + copy_width];
-                    dst.copy_from_slice(src);
-                }
-            });
+                surface.with_buffer(|buffer| {
+                    for row in 0..copy_height {
+                        let src =
+                            &bitmap.data()[row * bitmap.width()..row * bitmap.width() + copy_width];
+                        let dst = &mut buffer[row * width..row * width + copy_width];
+                        dst.copy_from_slice(src);
+                    }
+                });
 
-            surface.present();
-        }
+                surface.present();
+            }
+        })
     }
 
     pub fn present_partial(&self, bitmap: Bitmap, _rects: &[Rect]) {
@@ -578,14 +584,18 @@ impl WindowInner {
     }
 
     pub fn set_cursor(&self, cursor: Cursor) {
-        self.state.cursor.set(cursor);
-        self.state.update_cursor();
+        autoreleasepool(|_| {
+            self.state.cursor.set(cursor);
+            self.state.update_cursor();
+        })
     }
 
     pub fn set_mouse_position(&self, _position: Point) {}
 
     pub fn close(&self) {
-        self.state.app_state.windows.borrow_mut().remove(&Rc::as_ptr(&self.state));
-        self.state.close();
+        autoreleasepool(|_| {
+            self.state.app_state.windows.borrow_mut().remove(&Rc::as_ptr(&self.state));
+            self.state.close();
+        })
     }
 }
