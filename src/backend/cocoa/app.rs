@@ -95,9 +95,9 @@ impl AppInner {
     }
 
     pub fn exit(&self) {
-        unsafe {
+        autoreleasepool(|_| unsafe {
             NSApplication::sharedApplication().stop(None);
-        }
+        })
     }
 
     pub fn poll(&self) -> Result<()> {
