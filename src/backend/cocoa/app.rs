@@ -111,6 +111,7 @@ impl AppInner {
             }
 
             self.state.timers.shutdown();
+            self.state.display_links.shutdown();
         })
     }
 }

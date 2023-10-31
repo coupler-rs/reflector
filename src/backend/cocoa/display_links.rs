@@ -160,4 +160,8 @@ impl DisplayLinks {
             }
         }
     }
+
+    pub fn shutdown(&self) {
+        drop(self.displays.take());
+    }
 }
