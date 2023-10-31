@@ -52,6 +52,8 @@ fn GET_WHEEL_DELTA_WPARAM(wParam: WPARAM) -> i16 {
     HIWORD(wParam.0 as u32) as i16
 }
 
+const WHEEL_DELTA: u16 = 120;
+
 pub fn register_class() -> Result<PCWSTR> {
     let class_name = to_wstring(&class_name("window-"));
 
@@ -224,7 +226,7 @@ pub unsafe extern "system" fn wnd_proc(
                 }
             }
             msg::WM_MOUSEWHEEL | msg::WM_MOUSEHWHEEL => {
-                let delta = GET_WHEEL_DELTA_WPARAM(wparam) as f64 / 120.0;
+                let delta = GET_WHEEL_DELTA_WPARAM(wparam) as f64 / WHEEL_DELTA as f64;
                 let point = match msg {
                     msg::WM_MOUSEWHEEL => Point::new(0.0, delta),
                     msg::WM_MOUSEHWHEEL => Point::new(delta, 0.0),
