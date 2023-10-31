@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use portlight::{AppOptions, Bitmap, Event, Response, Size, WindowContext, WindowOptions};
+use portlight::{App, Bitmap, Event, Response, Size, WindowContext, WindowOptions};
 
 const WIDTH: usize = 512;
 const HEIGHT: usize = 512;
@@ -58,7 +58,7 @@ impl State {
 }
 
 fn main() {
-    let app = AppOptions::new().build().unwrap();
+    let app = App::new().unwrap();
 
     let mut state = State {
         framebuffer: Vec::new(),

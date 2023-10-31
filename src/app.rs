@@ -52,6 +52,10 @@ impl App {
         }
     }
 
+    pub fn new() -> Result<App> {
+        AppOptions::default().build()
+    }
+
     pub fn handle(&self) -> &AppHandle {
         &self.handle
     }
