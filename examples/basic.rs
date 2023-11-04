@@ -72,9 +72,11 @@ fn main() {
         .open(app.handle(), move |cx, event| state.handle_event(cx, event))
         .unwrap();
 
-    app.handle().set_timer(Duration::from_millis(1000), |_| {
-        println!("timer");
-    }).unwrap();
+    app.handle()
+        .set_timer(Duration::from_millis(1000), |_| {
+            println!("timer");
+        })
+        .unwrap();
 
     window.show();
 
