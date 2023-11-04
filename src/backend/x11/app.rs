@@ -5,8 +5,9 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use x11rb::connection::{Connection, RequestConnection};
-use x11rb::protocol::xproto::{Button, ConnectionExt as _, Window};
-use x11rb::protocol::{shm, xproto};
+use x11rb::protocol::present::{self, ConnectionExt as _};
+use x11rb::protocol::shm;
+use x11rb::protocol::xproto::{self, Button, ConnectionExt as _, Window};
 use x11rb::rust_connection::RustConnection;
 use x11rb::{cursor, protocol, resource_manager};
 
@@ -49,6 +50,7 @@ pub struct AppState {
     pub screen_index: usize,
     pub atoms: Atoms,
     pub shm_supported: bool,
+    pub present_supported: bool,
     pub resources: resource_manager::Database,
     pub cursor_handle: cursor::Handle,
     pub cursor_cache: RefCell<HashMap<Cursor, xproto::Cursor>>,
@@ -76,6 +78,8 @@ impl AppInner {
         let (connection, screen_index) = x11rb::connect(None)?;
         let atoms = Atoms::new(&connection)?.reply()?;
         let shm_supported = connection.extension_information(shm::X11_EXTENSION_NAME)?.is_some();
+        let present_supported =
+            connection.extension_information(present::X11_EXTENSION_NAME)?.is_some();
         let resources = resource_manager::new_from_default(&connection)?;
         let cursor_handle = cursor::Handle::new(&connection, screen_index, &resources)?.reply()?;
 
@@ -89,6 +93,7 @@ impl AppInner {
             connection,
             screen_index,
             shm_supported,
+            present_supported,
             atoms,
             resources,
             cursor_handle,
@@ -218,6 +223,15 @@ impl AppInner {
                         if let Some(button) = mouse_button_from_code(event.detail) {
                             window.handle_event(Event::MouseUp(button));
                         }
+                    }
+                }
+                protocol::Event::PresentCompleteNotify(event) => {
+                    let window = self.state.windows.borrow().get(&event.window).cloned();
+                    if let Some(window) = window {
+                        window.handle_event(Event::Frame);
+
+                        self.state.connection.present_notify_msc(event.window, 0, 0, 1, 0)?;
+                        self.state.connection.flush()?;
                     }
                 }
                 _ => {}

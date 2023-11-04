@@ -4,6 +4,7 @@ use std::rc::Rc;
 use std::{mem, ptr, slice};
 
 use x11rb::connection::Connection;
+use x11rb::protocol::present::{self, ConnectionExt as _};
 use x11rb::protocol::shm::{ConnectionExt as _, Seg};
 use x11rb::protocol::xproto::{
     AtomEnum, ChangeWindowAttributesAux, ClipOrdering, ConnectionExt as _, CreateGCAux,
@@ -26,10 +27,15 @@ pub struct ShmState {
     height: usize,
 }
 
+pub struct PresentState {
+    event_id: present::Event,
+}
+
 pub struct WindowState {
     pub window_id: Cell<Option<Window>>,
     pub gc_id: Cell<Option<Gcontext>>,
     pub shm_state: RefCell<Option<ShmState>>,
+    pub present_state: RefCell<Option<PresentState>>,
     pub expose_rects: RefCell<Vec<Rect>>,
     pub app_state: Rc<AppState>,
     pub handler: RefCell<Box<dyn FnMut(&WindowContext, Event) -> Response>>,
@@ -104,14 +110,24 @@ impl WindowState {
 
     pub fn close(&self) {
         if let Some(window_id) = self.window_id.take() {
-            let _ = self.app_state.connection.destroy_window(window_id);
-        }
+            let connection = &self.app_state.connection;
 
-        if let Some(gc_id) = self.gc_id.take() {
-            let _ = self.app_state.connection.free_gc(gc_id);
-        }
+            if let Some(gc_id) = self.gc_id.take() {
+                let _ = connection.free_gc(gc_id);
+            }
 
-        self.deinit_shm();
+            self.deinit_shm();
+
+            if let Some(present_state) = self.present_state.take() {
+                let _ = connection.present_select_input(
+                    present_state.event_id,
+                    window_id,
+                    present::EventMask::NO_EVENT,
+                );
+            }
+
+            let _ = connection.destroy_window(window_id);
+        }
     }
 }
 
@@ -196,12 +212,28 @@ impl WindowInner {
             size_physical.height.round() as usize,
         )?;
 
+        let present_state = if app_state.present_supported {
+            let event_id = connection.generate_id()?;
+            connection.present_select_input(
+                event_id,
+                window_id,
+                present::EventMask::COMPLETE_NOTIFY,
+            )?;
+
+            connection.present_notify_msc(window_id, 0, 0, 1, 0)?;
+
+            Some(PresentState { event_id })
+        } else {
+            None
+        };
+
         connection.flush()?;
 
         let state = Rc::new(WindowState {
             window_id: Cell::new(Some(window_id)),
             gc_id: Cell::new(Some(gc_id)),
             shm_state: RefCell::new(shm_state),
+            present_state: RefCell::new(present_state),
             expose_rects: RefCell::new(Vec::new()),
             app_state: Rc::clone(&app_state),
             handler: RefCell::new(Box::new(handler)),
