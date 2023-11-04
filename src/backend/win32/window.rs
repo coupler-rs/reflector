@@ -327,6 +327,10 @@ impl WindowInner {
     where
         H: FnMut(&WindowContext, Event) -> Response + 'static,
     {
+        if !app.inner.state.open.get() {
+            return Err(Error::AppDropped);
+        }
+
         unsafe {
             let window_name = to_wstring(&options.title);
 

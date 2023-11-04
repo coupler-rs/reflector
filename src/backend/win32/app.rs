@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
@@ -19,7 +19,7 @@ use super::timer::{TimerInner, Timers};
 use super::vsync::VsyncThreads;
 use super::window::{self, WindowState};
 use super::{class_name, hinstance, to_wstring, WM_USER_VBLANK};
-use crate::{AppMode, AppOptions, Result, TimerContext};
+use crate::{AppMode, AppOptions, Error, Result, TimerContext};
 
 fn register_message_class() -> Result<PCWSTR> {
     let class_name = to_wstring(&class_name("message-"));
@@ -84,6 +84,7 @@ pub unsafe extern "system" fn message_wnd_proc(
 }
 
 pub struct AppState {
+    pub open: Cell<bool>,
     pub message_class: PCWSTR,
     pub message_hwnd: HWND,
     pub window_class: PCWSTR,
@@ -91,19 +92,6 @@ pub struct AppState {
     pub timers: Timers,
     pub vsync_threads: VsyncThreads,
     pub windows: RefCell<HashMap<isize, Rc<WindowState>>>,
-}
-
-impl Drop for AppState {
-    fn drop(&mut self) {
-        self.vsync_threads.join_all();
-
-        unsafe {
-            window::unregister_class(self.window_class);
-
-            let _ = DestroyWindow(self.message_hwnd);
-            unregister_message_class(self.message_class);
-        }
-    }
 }
 
 pub struct AppInner {
@@ -146,6 +134,7 @@ impl AppInner {
         let vsync_threads = VsyncThreads::new();
 
         let state = Rc::new(AppState {
+            open: Cell::new(true),
             message_class,
             message_hwnd,
             window_class,
@@ -169,10 +158,18 @@ impl AppInner {
     where
         H: FnMut(&TimerContext) + 'static,
     {
+        if !self.state.open.get() {
+            return Err(Error::AppDropped);
+        }
+
         Ok(self.state.timers.set_timer(&self.state, duration, handler))
     }
 
     pub fn run(&self) -> Result<()> {
+        if !self.state.open.get() {
+            return Err(Error::AppDropped);
+        }
+
         loop {
             unsafe {
                 let mut msg: MSG = mem::zeroed();
@@ -197,6 +194,10 @@ impl AppInner {
     }
 
     pub fn poll(&self) -> Result<()> {
+        if !self.state.open.get() {
+            return Err(Error::AppDropped);
+        }
+
         loop {
             unsafe {
                 let mut msg: MSG = mem::zeroed();
@@ -219,10 +220,20 @@ impl AppInner {
     }
 
     pub fn shutdown(&self) {
+        self.state.open.set(false);
+
         for window_state in self.state.windows.take().into_values() {
             window_state.close();
         }
+        unsafe { window::unregister_class(self.state.window_class) };
 
         self.state.timers.shutdown();
+
+        self.state.vsync_threads.join_all();
+
+        unsafe {
+            let _ = DestroyWindow(self.state.message_hwnd);
+            unregister_message_class(self.state.message_class);
+        }
     }
 }
