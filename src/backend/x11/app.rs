@@ -45,8 +45,38 @@ x11rb::atom_manager! {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum RunState {
+    Stopped,
+    Running,
+    Exiting,
+}
+
+struct RunGuard<'a> {
+    run_state: &'a Cell<RunState>,
+}
+
+impl<'a> RunGuard<'a> {
+    fn new(run_state: &'a Cell<RunState>) -> Result<RunGuard<'a>> {
+        if run_state.get() == RunState::Running {
+            return Err(Error::AlreadyRunning);
+        }
+
+        run_state.set(RunState::Running);
+
+        Ok(RunGuard { run_state })
+    }
+}
+
+impl<'a> Drop for RunGuard<'a> {
+    fn drop(&mut self) {
+        self.run_state.set(RunState::Stopped);
+    }
+}
+
 pub struct AppState {
     pub open: Cell<bool>,
+    pub run_state: Cell<RunState>,
     pub connection: RustConnection,
     pub screen_index: usize,
     pub atoms: Atoms,
@@ -56,7 +86,6 @@ pub struct AppState {
     pub cursor_handle: cursor::Handle,
     pub cursor_cache: RefCell<HashMap<Cursor, xproto::Cursor>>,
     pub scale: f64,
-    pub running: Cell<bool>,
     pub windows: RefCell<HashMap<Window, Rc<WindowState>>>,
     pub timers: Timers,
 }
@@ -92,6 +121,7 @@ impl AppInner {
 
         let state = Rc::new(AppState {
             open: Cell::new(true),
+            run_state: Cell::new(RunState::Stopped),
             connection,
             screen_index,
             shm_supported,
@@ -101,7 +131,6 @@ impl AppInner {
             cursor_handle,
             cursor_cache: RefCell::new(HashMap::new()),
             scale,
-            running: Cell::new(false),
             windows: RefCell::new(HashMap::new()),
             timers: Timers::new(),
         });
@@ -127,16 +156,16 @@ impl AppInner {
             return Err(Error::AppDropped);
         }
 
-        self.state.running.set(true);
+        let _run_guard = RunGuard::new(&self.state.run_state)?;
 
         let fd = self.as_raw_fd();
 
-        while self.state.running.get() {
+        loop {
             self.drain_events()?;
             self.state.timers.poll(&self.state);
             self.drain_events()?;
 
-            if !self.state.running.get() {
+            if self.state.run_state.get() == RunState::Exiting {
                 break;
             }
 
@@ -153,22 +182,26 @@ impl AppInner {
                 -1
             };
 
-            unsafe {
-                libc::poll(fds.as_mut_ptr(), fds.len() as u64, timeout);
-            }
+            unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as u64, timeout) };
         }
 
         Ok(())
     }
 
     pub fn exit(&self) {
-        self.state.running.set(false);
+        self.state.run_state.set(RunState::Exiting);
     }
 
     pub fn poll(&self) -> Result<()> {
         if !self.state.open.get() {
             return Err(Error::AppDropped);
         }
+
+        if self.state.run_state.get() != RunState::Stopped {
+            return Err(Error::AlreadyRunning);
+        }
+
+        let _run_guard = RunGuard::new(&self.state.run_state)?;
 
         self.drain_events()?;
         self.state.timers.poll(&self.state);
@@ -178,7 +211,15 @@ impl AppInner {
     }
 
     fn drain_events(&self) -> Result<()> {
-        while let Some(event) = self.state.connection.poll_for_event()? {
+        loop {
+            if self.state.run_state.get() == RunState::Exiting {
+                break;
+            }
+
+            let Some(event) = self.state.connection.poll_for_event()? else {
+                break;
+            };
+
             match event {
                 protocol::Event::Expose(event) => {
                     let window = self.state.windows.borrow().get(&event.window).cloned();
