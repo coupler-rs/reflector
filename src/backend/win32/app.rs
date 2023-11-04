@@ -203,13 +203,19 @@ impl AppInner {
 
                 let result = PeekMessageW(&mut msg, HWND(0), 0, 0, msg::PM_REMOVE);
                 if result.0 == 0 {
-                    return Ok(());
+                    break;
+                }
+
+                if msg.message == msg::WM_QUIT {
+                    break;
                 }
 
                 TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
         }
+
+        Ok(())
     }
 
     pub fn shutdown(&self) {
