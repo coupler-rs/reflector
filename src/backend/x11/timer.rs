@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use super::app::{AppInner, AppState};
@@ -10,7 +10,9 @@ use crate::{AppHandle, Timer, TimerContext};
 pub type TimerId = usize;
 
 struct TimerState {
+    timer_id: TimerId,
     duration: Duration,
+    app_state: Rc<AppState>,
     handler: RefCell<Box<dyn FnMut(&TimerContext)>>,
 }
 
@@ -73,23 +75,21 @@ impl Timers {
         let timer_id = self.next_id.get();
         self.next_id.set(timer_id + 1);
 
-        self.timers.borrow_mut().insert(
+        let state = Rc::new(TimerState {
             timer_id,
-            Rc::new(TimerState {
-                duration,
-                handler: RefCell::new(Box::new(handler)),
-            }),
-        );
+            duration,
+            app_state: Rc::clone(app_state),
+            handler: RefCell::new(Box::new(handler)),
+        });
+
+        self.timers.borrow_mut().insert(timer_id, Rc::clone(&state));
 
         self.queue.borrow_mut().push(QueueEntry {
             time: now + duration,
             timer_id,
         });
 
-        TimerInner {
-            app_state: Rc::downgrade(app_state),
-            timer_id,
-        }
+        TimerInner { state }
     }
 
     pub fn poll(&self, app_state: &Rc<AppState>) {
@@ -100,19 +100,17 @@ impl Timers {
             let next = self.queue.borrow_mut().pop().unwrap();
 
             // If we don't find the timer in `self.timers`, it has been canceled
-            if let Some(timer_state) = self.timers.borrow().get(&next.timer_id).cloned() {
+            let timer_state = self.timers.borrow().get(&next.timer_id).cloned();
+            if let Some(timer_state) = timer_state {
                 let app = AppHandle::from_inner(AppInner {
                     state: Rc::clone(&app_state),
                 });
-                let timer = Timer::from_inner(TimerInner {
-                    app_state: Rc::downgrade(&app_state),
-                    timer_id: next.timer_id,
-                });
+                let timer = Timer::from_inner(TimerInner { state: timer_state });
                 let cx = TimerContext::new(&app, &timer);
-                timer_state.handler.borrow_mut()(&cx);
+                timer.inner.state.handler.borrow_mut()(&cx);
 
                 // If we fall behind by more than one timer interval, reset the timer's phase
-                let next_time = (next.time + timer_state.duration).max(now);
+                let next_time = (next.time + timer.inner.state.duration).max(now);
 
                 self.queue.borrow_mut().push(QueueEntry {
                     time: next_time,
@@ -121,18 +119,20 @@ impl Timers {
             }
         }
     }
+
+    pub fn shutdown(&self) {
+        drop(self.timers.take());
+        drop(self.queue.take());
+    }
 }
 
 #[derive(Clone)]
 pub struct TimerInner {
-    app_state: Weak<AppState>,
-    timer_id: TimerId,
+    state: Rc<TimerState>,
 }
 
 impl TimerInner {
     pub fn cancel(&self) {
-        if let Some(app_state) = self.app_state.upgrade() {
-            app_state.timers.timers.borrow_mut().remove(&self.timer_id);
-        }
+        self.state.app_state.timers.timers.borrow_mut().remove(&self.state.timer_id);
     }
 }

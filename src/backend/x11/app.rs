@@ -246,6 +246,8 @@ impl AppInner {
             window_state.close();
         }
         let _ = self.state.connection.flush();
+
+        self.state.timers.shutdown();
     }
 }
 
