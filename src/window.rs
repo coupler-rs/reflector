@@ -58,6 +58,16 @@ impl Rect {
             height,
         }
     }
+
+    #[inline]
+    pub fn scale(self, scale: f64) -> Rect {
+        Rect::new(
+            self.x * scale,
+            self.y * scale,
+            self.width * scale,
+            self.height * scale,
+        )
+    }
 }
 
 pub struct Bitmap<'a> {
