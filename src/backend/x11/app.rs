@@ -80,7 +80,6 @@ impl AppInner {
         let cursor_handle = cursor::Handle::new(&connection, screen_index, &resources)?.reply()?;
 
         let scale = if let Ok(Some(dpi)) = resources.get_value::<u32>("Xft.dpi", "") {
-            dbg!(dpi);
             dpi as f64 / 96.0
         } else {
             1.0
@@ -166,12 +165,15 @@ impl AppInner {
                 protocol::Event::Expose(event) => {
                     let window = self.state.windows.borrow().get(&event.window).cloned();
                     if let Some(window) = window {
-                        window.expose_rects.borrow_mut().push(Rect {
+                        let rect_physical = Rect {
                             x: event.x as f64,
                             y: event.y as f64,
                             width: event.width as f64,
                             height: event.height as f64,
-                        });
+                        };
+                        let rect = rect_physical.scale(self.state.scale.recip());
+
+                        window.expose_rects.borrow_mut().push(rect);
 
                         if event.count == 0 {
                             let rects = window.expose_rects.take();

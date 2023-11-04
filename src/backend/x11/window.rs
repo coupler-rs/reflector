@@ -141,6 +141,9 @@ impl WindowInner {
         };
 
         let position = options.position.unwrap_or(Point::new(0.0, 0.0));
+        let position_physical = position.scale(app_state.scale);
+
+        let size_physical = options.size.scale(app_state.scale);
 
         let event_mask = EventMask::EXPOSURE
             | EventMask::POINTER_MOTION
@@ -152,10 +155,10 @@ impl WindowInner {
             x11rb::COPY_FROM_PARENT as u8,
             window_id,
             parent_id,
-            position.x.round() as i16,
-            position.y.round() as i16,
-            options.size.width.round() as u16,
-            options.size.height.round() as u16,
+            position_physical.x.round() as i16,
+            position_physical.y.round() as i16,
+            size_physical.width.round() as u16,
+            size_physical.height.round() as u16,
             0,
             WindowClass::INPUT_OUTPUT,
             x11rb::COPY_FROM_PARENT,
@@ -189,8 +192,8 @@ impl WindowInner {
 
         let shm_state = WindowState::init_shm(
             &app_state,
-            options.size.width.round() as usize,
-            options.size.height.round() as usize,
+            size_physical.width.round() as usize,
+            size_physical.height.round() as usize,
         )?;
 
         connection.flush()?;
@@ -230,8 +233,9 @@ impl WindowInner {
     fn size_inner(&self) -> Result<Size> {
         let window_id = self.state.window_id.get().ok_or(Error::WindowClosed)?;
         let geom = self.state.app_state.connection.get_geometry(window_id)?.reply()?;
+        let size_physical = Size::new(geom.width as f64, geom.height as f64);
 
-        Ok(Size::new(geom.width as f64, geom.height as f64))
+        Ok(size_physical.scale(self.state.app_state.scale.recip()))
     }
 
     pub fn scale(&self) -> f64 {
@@ -254,11 +258,13 @@ impl WindowInner {
         if let Some(rects) = rects {
             let mut x_rects = Vec::with_capacity(rects.len());
             for rect in rects {
+                let rect_physical = rect.scale(self.state.app_state.scale);
+
                 x_rects.push(Rectangle {
-                    x: rect.x.round() as i16,
-                    y: rect.y.round() as i16,
-                    width: rect.width.round() as u16,
-                    height: rect.height.round() as u16,
+                    x: rect_physical.x.round() as i16,
+                    y: rect_physical.y.round() as i16,
+                    width: rect_physical.width.round() as u16,
+                    height: rect_physical.height.round() as u16,
                 });
             }
 
@@ -375,6 +381,8 @@ impl WindowInner {
 
     pub fn set_mouse_position(&self, position: Point) {
         if let Some(window_id) = self.state.window_id.get() {
+            let position_physical = position.scale(self.state.app_state.scale);
+
             let _ = self.state.app_state.connection.warp_pointer(
                 x11rb::NONE,
                 window_id,
@@ -382,8 +390,8 @@ impl WindowInner {
                 0,
                 0,
                 0,
-                position.x.round() as i16,
-                position.y.round() as i16,
+                position_physical.x.round() as i16,
+                position_physical.y.round() as i16,
             );
             let _ = self.state.app_state.connection.flush();
         }
