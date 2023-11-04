@@ -165,11 +165,11 @@ impl AppInner {
         Ok(AppInner { state })
     }
 
-    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> TimerInner
+    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> Result<TimerInner>
     where
         H: FnMut(&TimerContext) + 'static,
     {
-        self.state.timers.set_timer(&self.state, duration, handler)
+        Ok(self.state.timers.set_timer(&self.state, duration, handler))
     }
 
     pub fn run(&self) -> Result<()> {

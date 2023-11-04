@@ -105,11 +105,11 @@ impl AppHandle {
         }
     }
 
-    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> Timer
+    pub fn set_timer<H>(&self, duration: Duration, handler: H) -> Result<Timer>
     where
         H: FnMut(&TimerContext) + 'static,
     {
-        Timer::from_inner(self.inner.set_timer(duration, handler))
+        Ok(Timer::from_inner(self.inner.set_timer(duration, handler)?))
     }
 
     pub fn exit(&self) {

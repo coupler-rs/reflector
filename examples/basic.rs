@@ -74,7 +74,7 @@ fn main() {
 
     app.handle().set_timer(Duration::from_millis(1000), |_| {
         println!("timer");
-    });
+    }).unwrap();
 
     window.show();
 
