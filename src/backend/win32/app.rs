@@ -83,6 +83,28 @@ pub unsafe extern "system" fn message_wnd_proc(
     DefWindowProcW(hwnd, msg, wparam, lparam)
 }
 
+struct RunGuard<'a> {
+    running: &'a Cell<bool>,
+}
+
+impl<'a> RunGuard<'a> {
+    fn new(running: &'a Cell<bool>) -> Result<RunGuard<'a>> {
+        if running.get() {
+            return Err(Error::AlreadyRunning);
+        }
+
+        running.set(true);
+
+        Ok(RunGuard { running })
+    }
+}
+
+impl<'a> Drop for RunGuard<'a> {
+    fn drop(&mut self) {
+        self.running.set(false);
+    }
+}
+
 pub struct AppState {
     pub open: Cell<bool>,
     pub running: Cell<bool>,
@@ -172,31 +194,23 @@ impl AppInner {
             return Err(Error::AppDropped);
         }
 
-        if self.state.running.get() {
-            return Err(Error::AlreadyRunning);
-        }
+        let _run_guard = RunGuard::new(&self.state.running)?;
 
-        self.state.running.set(true);
-
-        let result = loop {
+        loop {
             unsafe {
                 let mut msg: MSG = mem::zeroed();
 
                 let result = GetMessageW(&mut msg, HWND(0), 0, 0);
                 if result.0 < 0 {
-                    break Err(windows::core::Error::from_win32().into());
+                    return Err(windows::core::Error::from_win32().into());
                 } else if result.0 == 0 {
-                    break Ok(());
+                    return Ok(());
                 }
 
                 TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
-        };
-
-        self.state.running.set(false);
-
-        result
+        }
     }
 
     pub fn exit(&self) {
@@ -210,11 +224,7 @@ impl AppInner {
             return Err(Error::AppDropped);
         }
 
-        if self.state.running.get() {
-            return Err(Error::AlreadyRunning);
-        }
-
-        self.state.running.set(true);
+        let _run_guard = RunGuard::new(&self.state.running)?;
 
         loop {
             unsafe {
@@ -222,21 +232,17 @@ impl AppInner {
 
                 let result = PeekMessageW(&mut msg, HWND(0), 0, 0, msg::PM_REMOVE);
                 if result.0 == 0 {
-                    break;
+                    return Ok(());
                 }
 
                 if msg.message == msg::WM_QUIT {
-                    break;
+                    return Ok(());
                 }
 
                 TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
         }
-
-        self.state.running.set(false);
-
-        Ok(())
     }
 
     pub fn shutdown(&self) {
