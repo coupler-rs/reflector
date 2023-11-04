@@ -1,7 +1,7 @@
 use std::mem;
 
 use windows::core::{HRESULT, PCSTR};
-use windows::Win32::Foundation::{BOOL, FALSE, HWND, RECT, S_OK, TRUE};
+use windows::Win32::Foundation::{BOOL, FALSE, HWND, RECT, S_OK};
 use windows::Win32::Graphics::Gdi::{
     GetDC, GetDeviceCaps, MonitorFromWindow, ReleaseDC, HDC, HMONITOR, LOGPIXELSX,
     MONITOR_DEFAULTTONEAREST,
@@ -98,46 +98,35 @@ impl DpiFns {
     }
 
     pub unsafe fn dpi_for_window(&self, hwnd: HWND) -> u32 {
-        #[allow(non_snake_case)]
-        unsafe {
-            if let Some(GetDpiForWindow) = self.GetDpiForWindow {
-                let dpi = GetDpiForWindow(hwnd);
-                if dpi == 0 {
-                    return USER_DEFAULT_SCREEN_DPI;
-                }
+        #![allow(non_snake_case)]
 
-                dpi
-            } else if let Some(GetDpiForMonitor) = self.GetDpiForMonitor {
-                let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-                if monitor == HMONITOR(0) {
-                    return USER_DEFAULT_SCREEN_DPI;
-                }
+        if let Some(GetDpiForWindow) = self.GetDpiForWindow {
+            let dpi = GetDpiForWindow(hwnd);
+            if dpi != 0 {
+                return dpi;
+            }
+        }
 
+        if let Some(GetDpiForMonitor) = self.GetDpiForMonitor {
+            let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            if monitor != HMONITOR(0) {
                 let mut dpi_x = 0;
                 let mut dpi_y = 0;
                 let res = GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y);
-                if res != S_OK {
-                    return USER_DEFAULT_SCREEN_DPI;
+                if res == S_OK {
+                    return dpi_x;
                 }
-
-                dpi_x
-            } else if let Some(IsProcessDPIAware) = self.IsProcessDPIAware {
-                if IsProcessDPIAware() == TRUE {
-                    let hdc = GetDC(hwnd);
-                    if hdc == HDC(0) {
-                        return USER_DEFAULT_SCREEN_DPI;
-                    }
-
-                    let dpi = GetDeviceCaps(hdc, LOGPIXELSX) as u32;
-                    ReleaseDC(hwnd, hdc);
-
-                    dpi
-                } else {
-                    USER_DEFAULT_SCREEN_DPI
-                }
-            } else {
-                USER_DEFAULT_SCREEN_DPI
             }
         }
+
+        let hdc = GetDC(HWND(0));
+        if hdc != HDC(0) {
+            let dpi = GetDeviceCaps(hdc, LOGPIXELSX) as u32;
+            ReleaseDC(HWND(0), hdc);
+
+            return dpi;
+        }
+
+        USER_DEFAULT_SCREEN_DPI
     }
 }
