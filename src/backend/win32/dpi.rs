@@ -1,10 +1,10 @@
 use std::mem;
 
 use windows::core::{HRESULT, PCSTR};
-use windows::Win32::Foundation::{BOOL, FALSE, HWND, RECT, S_OK};
+use windows::Win32::Foundation::{BOOL, FALSE, HWND, POINT, RECT, S_OK};
 use windows::Win32::Graphics::Gdi::{
-    GetDC, GetDeviceCaps, MonitorFromWindow, ReleaseDC, HDC, HMONITOR, LOGPIXELSX,
-    MONITOR_DEFAULTTONEAREST,
+    GetDC, GetDeviceCaps, MonitorFromPoint, MonitorFromWindow, ReleaseDC, HDC, HMONITOR,
+    LOGPIXELSX, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTOPRIMARY,
 };
 use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
 use windows::Win32::UI::HiDpi::{
@@ -109,6 +109,33 @@ impl DpiFns {
 
         if let Some(GetDpiForMonitor) = self.GetDpiForMonitor {
             let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            if monitor != HMONITOR(0) {
+                let mut dpi_x = 0;
+                let mut dpi_y = 0;
+                let res = GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y);
+                if res == S_OK {
+                    return dpi_x;
+                }
+            }
+        }
+
+        let hdc = GetDC(HWND(0));
+        if hdc != HDC(0) {
+            let dpi = GetDeviceCaps(hdc, LOGPIXELSX) as u32;
+            ReleaseDC(HWND(0), hdc);
+
+            return dpi;
+        }
+
+        USER_DEFAULT_SCREEN_DPI
+    }
+
+    pub unsafe fn dpi_for_primary_monitor(&self) -> u32 {
+        #![allow(non_snake_case)]
+
+        if let Some(GetDpiForMonitor) = self.GetDpiForMonitor {
+            // The primary monitor is located at (0,0).
+            let monitor = MonitorFromPoint(POINT { x: 0, y: 0 }, MONITOR_DEFAULTTOPRIMARY);
             if monitor != HMONITOR(0) {
                 let mut dpi_x = 0;
                 let mut dpi_y = 0;

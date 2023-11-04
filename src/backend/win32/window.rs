@@ -161,10 +161,12 @@ pub unsafe extern "system" fn wnd_proc(
                 return LRESULT(0);
             }
             msg::WM_MOUSEMOVE => {
-                let point = Point {
+                let point_physical = Point {
                     x: GET_X_LPARAM(lparam) as f64,
                     y: GET_Y_LPARAM(lparam) as f64,
                 };
+                let point = point_physical.scale(state.scale().recip());
+
                 state.handle_event(Event::MouseMove(point));
 
                 return LRESULT(0);
@@ -283,6 +285,16 @@ impl WindowState {
         }
     }
 
+    pub fn scale(&self) -> f64 {
+        if let Some(hwnd) = self.hwnd.get() {
+            let dpi = unsafe { self.app_state.dpi.dpi_for_window(hwnd) };
+
+            dpi as f64 / msg::USER_DEFAULT_SCREEN_DPI as f64
+        } else {
+            1.0
+        }
+    }
+
     pub fn handle_event(self: &Rc<WindowState>, event: Event) -> Option<Response> {
         if let Ok(mut handler) = self.handler.try_borrow_mut() {
             let app = AppHandle::from_inner(AppInner {
@@ -330,16 +342,6 @@ impl WindowInner {
                     | msg::WS_MAXIMIZEBOX;
             }
 
-            let position = options.position.unwrap_or(Point::new(0.0, 0.0));
-
-            let mut rect = RECT {
-                left: position.x.round() as i32,
-                top: position.y.round() as i32,
-                right: (position.x + options.size.width).round() as i32,
-                bottom: (position.y + options.size.height).round() as i32,
-            };
-            let _ = AdjustWindowRectEx(&mut rect, style, FALSE, WINDOW_EX_STYLE(0));
-
             let parent = if let Some(parent) = options.parent {
                 if let RawParent::Win32(hwnd) = parent {
                     HWND(hwnd as isize)
@@ -349,6 +351,24 @@ impl WindowInner {
             } else {
                 HWND(0)
             };
+
+            let dpi = if options.parent.is_some() {
+                app.inner.state.dpi.dpi_for_window(parent)
+            } else {
+                app.inner.state.dpi.dpi_for_primary_monitor()
+            };
+            let scale = dpi as f64 / msg::USER_DEFAULT_SCREEN_DPI as f64;
+
+            let position_physical = options.position.unwrap_or(Point::new(0.0, 0.0)).scale(scale);
+            let size_physical = options.size.scale(scale);
+
+            let mut rect = RECT {
+                left: position_physical.x.round() as i32,
+                top: position_physical.y.round() as i32,
+                right: (position_physical.x + size_physical.width).round() as i32,
+                bottom: (position_physical.y + size_physical.height).round() as i32,
+            };
+            let _ = AdjustWindowRectEx(&mut rect, style, FALSE, WINDOW_EX_STYLE(0));
 
             let (x, y) = if options.position.is_some() {
                 (rect.top, rect.left)
@@ -415,23 +435,18 @@ impl WindowInner {
                 let _ = GetClientRect(hwnd, &mut rect);
             }
 
-            Size::new(
+            let size_physical = Size::new(
                 (rect.right - rect.left) as f64,
                 (rect.bottom - rect.top) as f64,
-            )
+            );
+            size_physical.scale(self.scale().recip())
         } else {
             Size::new(0.0, 0.0)
         }
     }
 
     pub fn scale(&self) -> f64 {
-        if let Some(hwnd) = self.state.hwnd.get() {
-            let dpi = unsafe { self.state.app_state.dpi.dpi_for_window(hwnd) };
-
-            dpi as f64 / msg::USER_DEFAULT_SCREEN_DPI as f64
-        } else {
-            1.0
-        }
+        self.state.scale()
     }
 
     pub fn present(&self, bitmap: Bitmap) {
@@ -543,9 +558,11 @@ impl WindowInner {
 
     pub fn set_mouse_position(&self, position: Point) {
         if let Some(hwnd) = self.state.hwnd.get() {
+            let position_physical = position.scale(self.scale());
+
             let mut point = POINT {
-                x: position.x as c_int,
-                y: position.y as c_int,
+                x: position_physical.x as c_int,
+                y: position_physical.y as c_int,
             };
             unsafe {
                 gdi::ClientToScreen(hwnd, &mut point);
