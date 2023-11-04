@@ -132,7 +132,9 @@ impl AppInner {
 
     pub fn exit(&self) {
         autoreleasepool(|_| unsafe {
-            NSApplication::sharedApplication().stop(None);
+            if self.state.running.get() {
+                NSApplication::sharedApplication().stop(None);
+            }
         })
     }
 
