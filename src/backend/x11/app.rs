@@ -13,7 +13,7 @@ use x11rb::{cursor, protocol, resource_manager};
 
 use super::timer::{TimerInner, Timers};
 use super::window::WindowState;
-use crate::{AppOptions, Cursor, Event, MouseButton, Point, Rect, Result, TimerContext};
+use crate::{AppOptions, Cursor, Error, Event, MouseButton, Point, Rect, Result, TimerContext};
 
 fn mouse_button_from_code(code: Button) -> Option<MouseButton> {
     match code {
@@ -46,6 +46,7 @@ x11rb::atom_manager! {
 }
 
 pub struct AppState {
+    pub open: Cell<bool>,
     pub connection: RustConnection,
     pub screen_index: usize,
     pub atoms: Atoms,
@@ -90,6 +91,7 @@ impl AppInner {
         };
 
         let state = Rc::new(AppState {
+            open: Cell::new(true),
             connection,
             screen_index,
             shm_supported,
@@ -113,10 +115,18 @@ impl AppInner {
     where
         H: FnMut(&TimerContext) + 'static,
     {
+        if !self.state.open.get() {
+            return Err(Error::AppDropped);
+        }
+
         Ok(self.state.timers.set_timer(&self.state, duration, handler))
     }
 
     pub fn run(&self) -> Result<()> {
+        if !self.state.open.get() {
+            return Err(Error::AppDropped);
+        }
+
         self.state.running.set(true);
 
         let fd = self.as_raw_fd();
@@ -156,6 +166,10 @@ impl AppInner {
     }
 
     pub fn poll(&self) -> Result<()> {
+        if !self.state.open.get() {
+            return Err(Error::AppDropped);
+        }
+
         self.drain_events()?;
         self.state.timers.poll(&self.state);
         self.drain_events()?;
@@ -241,6 +255,8 @@ impl AppInner {
     }
 
     pub fn shutdown(&self) {
+        self.state.open.set(false);
+
         for window_state in self.state.windows.take().into_values() {
             window_state.close();
         }

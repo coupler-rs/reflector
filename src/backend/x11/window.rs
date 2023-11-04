@@ -141,6 +141,10 @@ impl WindowInner {
     where
         H: FnMut(&WindowContext, Event) -> Response + 'static,
     {
+        if !app.inner.state.open.get() {
+            return Err(Error::AppDropped);
+        }
+
         let app_state = &app.inner.state;
         let connection = &app_state.connection;
 
