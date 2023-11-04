@@ -6,6 +6,7 @@ pub type Result<T> = result::Result<T, Error>;
 pub enum Error {
     Os(crate::backend::OsError),
     AppDropped,
+    AlreadyRunning,
     WindowClosed,
     InsideEventHandler,
     InvalidWindowHandle,
@@ -18,6 +19,7 @@ impl fmt::Display for Error {
         match self {
             Error::Os(err) => write!(fmt, "os error: {}", err),
             Error::AppDropped => write!(fmt, "app dropped"),
+            Error::AlreadyRunning => write!(fmt, "app is already running"),
             Error::WindowClosed => write!(fmt, "window closed"),
             Error::InsideEventHandler => {
                 write!(fmt, "operation not supported inside an event handler")

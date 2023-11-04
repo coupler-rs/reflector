@@ -85,6 +85,7 @@ pub unsafe extern "system" fn message_wnd_proc(
 
 pub struct AppState {
     pub open: Cell<bool>,
+    pub running: Cell<bool>,
     pub message_class: PCWSTR,
     pub message_hwnd: HWND,
     pub window_class: PCWSTR,
@@ -135,6 +136,7 @@ impl AppInner {
 
         let state = Rc::new(AppState {
             open: Cell::new(true),
+            running: Cell::new(false),
             message_class,
             message_hwnd,
             window_class,
@@ -170,26 +172,36 @@ impl AppInner {
             return Err(Error::AppDropped);
         }
 
-        loop {
+        if self.state.running.get() {
+            return Err(Error::AlreadyRunning);
+        }
+
+        self.state.running.set(true);
+
+        let result = loop {
             unsafe {
                 let mut msg: MSG = mem::zeroed();
 
                 let result = GetMessageW(&mut msg, HWND(0), 0, 0);
                 if result.0 < 0 {
-                    return Err(windows::core::Error::from_win32().into());
+                    break Err(windows::core::Error::from_win32().into());
                 } else if result.0 == 0 {
-                    return Ok(());
+                    break Ok(());
                 }
 
                 TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
-        }
+        };
+
+        self.state.running.set(false);
+
+        result
     }
 
     pub fn exit(&self) {
-        unsafe {
-            PostQuitMessage(0);
+        if self.state.running.get() {
+            unsafe { PostQuitMessage(0) };
         }
     }
 
@@ -197,6 +209,12 @@ impl AppInner {
         if !self.state.open.get() {
             return Err(Error::AppDropped);
         }
+
+        if self.state.running.get() {
+            return Err(Error::AlreadyRunning);
+        }
+
+        self.state.running.set(true);
 
         loop {
             unsafe {
@@ -215,6 +233,8 @@ impl AppInner {
                 DispatchMessageW(&msg);
             }
         }
+
+        self.state.running.set(false);
 
         Ok(())
     }
