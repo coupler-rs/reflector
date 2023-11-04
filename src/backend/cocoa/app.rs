@@ -15,8 +15,31 @@ use super::timer::{TimerInner, Timers};
 use super::window::{View, WindowState};
 use crate::{AppMode, AppOptions, Error, Result, TimerContext};
 
+struct RunGuard<'a> {
+    running: &'a Cell<bool>,
+}
+
+impl<'a> RunGuard<'a> {
+    fn new(running: &'a Cell<bool>) -> Result<RunGuard<'a>> {
+        if running.get() {
+            return Err(Error::AlreadyRunning);
+        }
+
+        running.set(true);
+
+        Ok(RunGuard { running })
+    }
+}
+
+impl<'a> Drop for RunGuard<'a> {
+    fn drop(&mut self) {
+        self.running.set(false);
+    }
+}
+
 pub struct AppState {
     pub open: Cell<bool>,
+    pub running: Cell<bool>,
     pub class: &'static AnyClass,
     pub empty_cursor: Id<NSCursor>,
     pub timers: Timers,
@@ -60,6 +83,7 @@ impl AppInner {
 
             let state = Rc::new(AppState {
                 open: Cell::new(true),
+                running: Cell::new(false),
                 class,
                 empty_cursor,
                 timers: Timers::new(),
@@ -98,6 +122,8 @@ impl AppInner {
                 return Err(Error::AppDropped);
             }
 
+            let _run_guard = RunGuard::new(&self.state.running)?;
+
             NSApplication::sharedApplication().run();
 
             Ok(())
@@ -114,6 +140,8 @@ impl AppInner {
         if !self.state.open.get() {
             return Err(Error::AppDropped);
         }
+
+        let _run_guard = RunGuard::new(&self.state.running)?;
 
         Ok(())
     }
