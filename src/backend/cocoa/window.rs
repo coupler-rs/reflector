@@ -384,6 +384,10 @@ impl WindowInner {
         H: FnMut(&WindowContext, Event) -> Response + 'static,
     {
         autoreleasepool(|_| {
+            if !app.inner.state.open.get() {
+                return Err(Error::AppDropped);
+            }
+
             let app_state = &app.inner.state;
 
             let parent_view = if let Some(parent) = options.parent {

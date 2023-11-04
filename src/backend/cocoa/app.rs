@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
@@ -13,9 +13,10 @@ use icrate::Foundation::{NSPoint, NSSize, NSThread};
 use super::display_links::DisplayLinks;
 use super::timer::{TimerInner, Timers};
 use super::window::{View, WindowState};
-use crate::{AppMode, AppOptions, Result, TimerContext};
+use crate::{AppMode, AppOptions, Error, Result, TimerContext};
 
 pub struct AppState {
+    pub open: Cell<bool>,
     pub class: &'static AnyClass,
     pub empty_cursor: Id<NSCursor>,
     pub timers: Timers,
@@ -58,6 +59,7 @@ impl AppInner {
             };
 
             let state = Rc::new(AppState {
+                open: Cell::new(true),
                 class,
                 empty_cursor,
                 timers: Timers::new(),
@@ -83,11 +85,19 @@ impl AppInner {
     where
         H: FnMut(&TimerContext) + 'static,
     {
+        if !self.state.open.get() {
+            return Err(Error::AppDropped);
+        }
+
         Ok(self.state.timers.set_timer(&self.state, duration, handler))
     }
 
     pub fn run(&self) -> Result<()> {
         autoreleasepool(|_| unsafe {
+            if !self.state.open.get() {
+                return Err(Error::AppDropped);
+            }
+
             NSApplication::sharedApplication().run();
 
             Ok(())
@@ -101,11 +111,17 @@ impl AppInner {
     }
 
     pub fn poll(&self) -> Result<()> {
+        if !self.state.open.get() {
+            return Err(Error::AppDropped);
+        }
+
         Ok(())
     }
 
     pub fn shutdown(&self) {
         autoreleasepool(|_| {
+            self.state.open.set(false);
+
             for window_state in self.state.windows.take().into_values() {
                 window_state.close();
             }
