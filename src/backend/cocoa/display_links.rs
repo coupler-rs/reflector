@@ -102,7 +102,7 @@ impl Display {
 
         let mut context = CFRunLoopSourceContext {
             version: 0,
-            info: Rc::into_raw(state) as *mut c_void,
+            info: Rc::as_ptr(&state) as *mut c_void,
             retain: Some(retain),
             release: Some(release),
             copyDescription: None,
