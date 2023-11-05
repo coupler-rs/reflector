@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ptr;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 
 use objc2::rc::Id;
 
@@ -67,16 +67,14 @@ extern "C" fn release(info: *const c_void) {
 extern "C" fn perform(info: *const c_void) {
     let state = unsafe { &*(info as *mut DisplayState) };
 
-    if let Some(app_state) = state.app_state.upgrade() {
-        let windows: Vec<*const View> = app_state.windows.borrow().keys().copied().collect();
-        for ptr in windows {
-            let window_state = app_state.windows.borrow().get(&ptr).cloned();
-            if let Some(window_state) = window_state {
-                if let Some(view) = window_state.view() {
-                    let display = display_from_view(&*view);
-                    if display == Some(state.display_id) {
-                        view.handle_event(Event::Frame);
-                    }
+    let windows: Vec<*const View> = state.app_state.windows.borrow().keys().copied().collect();
+    for ptr in windows {
+        let window_state = state.app_state.windows.borrow().get(&ptr).cloned();
+        if let Some(window_state) = window_state {
+            if let Some(view) = window_state.view() {
+                let display = display_from_view(&*view);
+                if display == Some(state.display_id) {
+                    view.handle_event(Event::Frame);
                 }
             }
         }
@@ -85,7 +83,7 @@ extern "C" fn perform(info: *const c_void) {
 
 struct DisplayState {
     display_id: CGDirectDisplayID,
-    app_state: Weak<AppState>,
+    app_state: Rc<AppState>,
 }
 
 struct Display {
@@ -97,7 +95,7 @@ impl Display {
     pub fn new(app_state: &Rc<AppState>, display_id: CGDirectDisplayID) -> Display {
         let state = Rc::new(DisplayState {
             display_id,
-            app_state: Rc::downgrade(app_state),
+            app_state: Rc::clone(app_state),
         });
 
         let mut context = CFRunLoopSourceContext {
