@@ -75,7 +75,7 @@ extern "C" fn perform(info: *const c_void) {
                 if let Some(view) = window_state.view() {
                     let display = display_from_view(&*view);
                     if display == Some(state.display_id) {
-                        window_state.handle_event(Event::Frame);
+                        view.handle_event(Event::Frame);
                     }
                 }
             }

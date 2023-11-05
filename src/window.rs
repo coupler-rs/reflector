@@ -233,7 +233,7 @@ impl<'a> WindowContext<'a> {
 
 #[derive(Clone)]
 pub struct Window {
-    inner: backend::WindowInner,
+    pub(crate) inner: backend::WindowInner,
     // ensure !Send and !Sync on all platforms
     _marker: PhantomData<*mut ()>,
 }
