@@ -487,7 +487,7 @@ impl WindowInner {
                 state.window.replace(Some(window));
             }
 
-            app_state.windows.borrow_mut().insert(Rc::as_ptr(&state), Rc::clone(&state));
+            app_state.windows.borrow_mut().insert(Id::as_ptr(&view), Rc::clone(&state));
 
             let inner = WindowInner { state };
 
@@ -598,7 +598,10 @@ impl WindowInner {
 
     pub fn close(&self) {
         autoreleasepool(|_| {
-            self.state.app_state.windows.borrow_mut().remove(&Rc::as_ptr(&self.state));
+            if let Some(view) = self.state.view.borrow().as_ref() {
+                self.state.app_state.windows.borrow_mut().remove(&Id::as_ptr(view));
+            }
+
             self.state.close();
         })
     }

@@ -44,7 +44,7 @@ pub struct AppState {
     pub empty_cursor: Id<NSCursor>,
     pub timers: Timers,
     pub display_links: DisplayLinks,
-    pub windows: RefCell<HashMap<*const WindowState, Rc<WindowState>>>,
+    pub windows: RefCell<HashMap<*const View, Rc<WindowState>>>,
 }
 
 impl Drop for AppState {
