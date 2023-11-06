@@ -1,6 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::time::Duration;
 use std::{mem, ptr};
 
@@ -57,23 +57,19 @@ pub unsafe extern "system" fn message_wnd_proc(
 ) -> LRESULT {
     let app_state_ptr = GetWindowLongPtrW(hwnd, msg::GWLP_USERDATA) as *mut AppState;
     if !app_state_ptr.is_null() {
-        let app_state_weak = Weak::from_raw(app_state_ptr);
-        let app_state = app_state_weak.clone();
-        let _ = app_state_weak.into_raw();
+        let app_state_rc = Rc::from_raw(app_state_ptr);
+        let app_state = Rc::clone(&app_state_rc);
+        let _ = Rc::into_raw(app_state_rc);
 
         match msg {
             msg::WM_TIMER => {
-                if let Some(app_state) = app_state.upgrade() {
-                    app_state.timers.handle_timer(&app_state, wparam.0);
-                }
+                app_state.timers.handle_timer(&app_state, wparam.0);
             }
             WM_USER_VBLANK => {
-                if let Some(app_state) = app_state.upgrade() {
-                    app_state.vsync_threads.handle_vblank(&app_state, HMONITOR(lparam.0));
-                }
+                app_state.vsync_threads.handle_vblank(&app_state, HMONITOR(lparam.0));
             }
             msg::WM_DESTROY => {
-                drop(Weak::from_raw(app_state_ptr));
+                drop(Rc::from_raw(app_state_ptr));
                 SetWindowLongPtrW(hwnd, msg::GWLP_USERDATA, 0);
             }
             _ => {}
@@ -168,7 +164,7 @@ impl AppInner {
             windows: RefCell::new(HashMap::new()),
         });
 
-        let state_ptr = Weak::into_raw(Rc::downgrade(&state));
+        let state_ptr = Rc::into_raw(Rc::clone(&state));
         unsafe {
             SetWindowLongPtrW(message_hwnd, msg::GWLP_USERDATA, state_ptr as isize);
         }
