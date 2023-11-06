@@ -201,108 +201,133 @@ impl View {
     }
 
     unsafe extern "C" fn mouse_moved(&self, _: Sel, event: Option<&NSEvent>) {
-        let Some(event) = event else { return; };
+        self.state().app_state.catch_unwind(|| {
+            let Some(event) = event else { return; };
 
-        let point = self.convertPoint_fromView(event.locationInWindow(), None);
-        self.handle_event(Event::MouseMove(Point {
-            x: point.x,
-            y: point.y,
-        }));
+            let point = self.convertPoint_fromView(event.locationInWindow(), None);
+            self.handle_event(Event::MouseMove(Point {
+                x: point.x,
+                y: point.y,
+            }));
+        });
     }
 
     unsafe extern "C" fn mouse_down(&self, _: Sel, event: Option<&NSEvent>) {
-        let result = self.handle_event(Event::MouseDown(MouseButton::Left));
+        self.state().app_state.catch_unwind(|| {
+            let result = self.handle_event(Event::MouseDown(MouseButton::Left));
 
-        if result != Some(Response::Capture) {
-            let () = msg_send![super(self, NSView::class()), mouseDown: event];
-        }
+            if result != Some(Response::Capture) {
+                let () = msg_send![super(self, NSView::class()), mouseDown: event];
+            }
+        });
     }
 
     unsafe extern "C" fn mouse_up(&self, _: Sel, event: Option<&NSEvent>) {
-        let result = self.handle_event(Event::MouseUp(MouseButton::Left));
+        self.state().app_state.catch_unwind(|| {
+            let result = self.handle_event(Event::MouseUp(MouseButton::Left));
 
-        if result != Some(Response::Capture) {
-            let () = msg_send![super(self, NSView::class()), mouseUp: event];
-        }
+            if result != Some(Response::Capture) {
+                let () = msg_send![super(self, NSView::class()), mouseUp: event];
+            }
+        });
     }
 
     unsafe extern "C" fn right_mouse_down(&self, _: Sel, event: Option<&NSEvent>) {
-        let result = self.handle_event(Event::MouseDown(MouseButton::Right));
+        self.state().app_state.catch_unwind(|| {
+            let result = self.handle_event(Event::MouseDown(MouseButton::Right));
 
-        if result != Some(Response::Capture) {
-            let () = msg_send![super(self, NSView::class()), rightMouseDown: event];
-        }
+            if result != Some(Response::Capture) {
+                let () = msg_send![super(self, NSView::class()), rightMouseDown: event];
+            }
+        });
     }
 
     unsafe extern "C" fn right_mouse_up(&self, _: Sel, event: Option<&NSEvent>) {
-        let result = self.handle_event(Event::MouseUp(MouseButton::Right));
+        self.state().app_state.catch_unwind(|| {
+            let result = self.handle_event(Event::MouseUp(MouseButton::Right));
 
-        if result != Some(Response::Capture) {
-            let () = msg_send![super(self, NSView::class()), rightMouseUp: event];
-        }
+            if result != Some(Response::Capture) {
+                let () = msg_send![super(self, NSView::class()), rightMouseUp: event];
+            }
+        });
     }
 
     unsafe extern "C" fn other_mouse_down(&self, _: Sel, event: Option<&NSEvent>) {
-        let Some(event) = event else { return; };
+        self.state().app_state.catch_unwind(|| {
+            let Some(event) = event else { return; };
 
-        let button_number = event.buttonNumber();
-        let result = if let Some(button) = mouse_button_from_number(button_number) {
-            self.handle_event(Event::MouseDown(button))
-        } else {
-            None
-        };
+            let button_number = event.buttonNumber();
+            let result = if let Some(button) = mouse_button_from_number(button_number) {
+                self.handle_event(Event::MouseDown(button))
+            } else {
+                None
+            };
 
-        if result != Some(Response::Capture) {
-            let () = msg_send![super(self, NSView::class()), otherMouseDown: event];
-        }
+            if result != Some(Response::Capture) {
+                let () = msg_send![super(self, NSView::class()), otherMouseDown: event];
+            }
+        });
     }
 
     unsafe extern "C" fn other_mouse_up(&self, _: Sel, event: Option<&NSEvent>) {
-        let Some(event) = event else { return; };
+        self.state().app_state.catch_unwind(|| {
+            let Some(event) = event else { return; };
 
-        let button_number = event.buttonNumber();
-        let result = if let Some(button) = mouse_button_from_number(button_number) {
-            self.handle_event(Event::MouseUp(button))
-        } else {
-            None
-        };
+            let button_number = event.buttonNumber();
+            let result = if let Some(button) = mouse_button_from_number(button_number) {
+                self.handle_event(Event::MouseUp(button))
+            } else {
+                None
+            };
 
-        if result != Some(Response::Capture) {
-            let () = msg_send![super(self, NSView::class()), otherMouseUp: event];
-        }
+            if result != Some(Response::Capture) {
+                let () = msg_send![super(self, NSView::class()), otherMouseUp: event];
+            }
+        });
     }
 
     unsafe extern "C" fn scroll_wheel(&self, _: Sel, event: Option<&NSEvent>) {
-        let Some(event) = event else { return; };
+        self.state().app_state.catch_unwind(|| {
+            let Some(event) = event else { return; };
 
-        let dx = event.scrollingDeltaX();
-        let dy = event.scrollingDeltaY();
-        let delta = if event.hasPreciseScrollingDeltas() {
-            Point::new(dx, dy)
-        } else {
-            Point::new(32.0 * dx, 32.0 * dy)
-        };
-        let result = self.handle_event(Event::Scroll(delta));
+            let dx = event.scrollingDeltaX();
+            let dy = event.scrollingDeltaY();
+            let delta = if event.hasPreciseScrollingDeltas() {
+                Point::new(dx, dy)
+            } else {
+                Point::new(32.0 * dx, 32.0 * dy)
+            };
+            let result = self.handle_event(Event::Scroll(delta));
 
-        if result != Some(Response::Capture) {
-            let () = msg_send![super(self, NSView::class()), scrollWheel: event];
-        }
+            if result != Some(Response::Capture) {
+                let () = msg_send![super(self, NSView::class()), scrollWheel: event];
+            }
+        });
     }
 
     unsafe extern "C" fn cursor_update(&self, _: Sel, _event: Option<&NSEvent>) {
-        self.state().update_cursor();
+        self.state().app_state.catch_unwind(|| {
+            self.state().update_cursor();
+        });
     }
 
     unsafe extern "C" fn window_should_close(&self, _: Sel, _sender: &NSWindow) -> Bool {
-        self.handle_event(Event::Close);
+        self.state().app_state.catch_unwind(|| {
+            self.handle_event(Event::Close);
+        });
 
         Bool::NO
     }
 
     unsafe extern "C" fn dealloc(&self, _: Sel) {
-        drop(Rc::from_raw(self.state.get() as *mut WindowState));
+        // Hold a reference to AppState, since WindowState is being dropped
+        let app_state = Rc::clone(&self.state().app_state);
 
-        let () = msg_send![super(self, NSView::class()), dealloc];
+        app_state.catch_unwind(|| {
+            drop(Rc::from_raw(self.state.get() as *const WindowState));
+
+            let () = msg_send![super(self, NSView::class()), dealloc];
+        });
     }
 }
 

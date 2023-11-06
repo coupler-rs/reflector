@@ -13,17 +13,19 @@ use super::app::{AppInner, AppState};
 use crate::{AppHandle, Timer, TimerContext};
 
 extern "C" fn retain(info: *const c_void) -> *const c_void {
-    unsafe {
-        Rc::increment_strong_count(info as *const TimerState);
-    }
+    unsafe { Rc::increment_strong_count(info as *const TimerState) };
 
     info
 }
 
 extern "C" fn release(info: *const c_void) {
-    unsafe {
-        Rc::decrement_strong_count(info as *const TimerState);
-    }
+    // Hold a reference to AppState, since TimerState is being dropped
+    let state = unsafe { &*(info as *mut TimerState) };
+    let app_state = Rc::clone(&state.app_state);
+
+    app_state.catch_unwind(|| {
+        unsafe { Rc::decrement_strong_count(info as *const TimerState) };
+    });
 }
 
 extern "C" fn callback(_timer: CFRunLoopTimerRef, info: *mut c_void) {
@@ -34,9 +36,12 @@ extern "C" fn callback(_timer: CFRunLoopTimerRef, info: *mut c_void) {
     let app = AppHandle::from_inner(AppInner {
         state: Rc::clone(&state.app_state),
     });
-    let timer = Timer::from_inner(TimerInner { state });
-    let cx = TimerContext::new(&app, &timer);
-    timer.inner.state.handler.borrow_mut()(&cx);
+
+    app.inner.state.catch_unwind(|| {
+        let timer = Timer::from_inner(TimerInner { state });
+        let cx = TimerContext::new(&app, &timer);
+        timer.inner.state.handler.borrow_mut()(&cx);
+    });
 }
 
 struct TimerState {

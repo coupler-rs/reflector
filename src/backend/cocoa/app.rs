@@ -1,5 +1,7 @@
+use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::panic::{self, AssertUnwindSafe};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -40,11 +42,27 @@ impl<'a> Drop for RunGuard<'a> {
 pub struct AppState {
     pub open: Cell<bool>,
     pub running: Cell<bool>,
+    pub panic: Cell<Option<Box<dyn Any + Send>>>,
     pub class: &'static AnyClass,
     pub empty_cursor: Id<NSCursor>,
     pub timers: Timers,
     pub display_links: DisplayLinks,
     pub windows: RefCell<HashMap<*const View, Rc<WindowState>>>,
+}
+
+impl AppState {
+    pub(crate) fn catch_unwind<F: FnOnce()>(&self, f: F) {
+        let result = panic::catch_unwind(AssertUnwindSafe(f));
+
+        if let Err(panic) = result {
+            self.panic.set(Some(panic));
+
+            // If we own the event loop, exit and propagate the panic upwards.
+            if self.running.get() {
+                unsafe { NSApplication::sharedApplication().stop(None) };
+            }
+        }
+    }
 }
 
 impl Drop for AppState {
@@ -84,6 +102,7 @@ impl AppInner {
             let state = Rc::new(AppState {
                 open: Cell::new(true),
                 running: Cell::new(false),
+                panic: Cell::new(None),
                 class,
                 empty_cursor,
                 timers: Timers::new(),
@@ -126,6 +145,10 @@ impl AppInner {
 
             NSApplication::sharedApplication().run();
 
+            if let Some(panic) = self.state.panic.take() {
+                panic::resume_unwind(panic);
+            }
+
             Ok(())
         })
     }
@@ -144,6 +167,12 @@ impl AppInner {
         }
 
         let _run_guard = RunGuard::new(&self.state.running)?;
+
+        // TODO: poll events
+
+        if let Some(panic) = self.state.panic.take() {
+            panic::resume_unwind(panic);
+        }
 
         Ok(())
     }

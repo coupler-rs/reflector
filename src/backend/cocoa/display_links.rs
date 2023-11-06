@@ -51,34 +51,38 @@ extern "C" fn callback(
 }
 
 extern "C" fn retain(info: *const c_void) -> *const c_void {
-    unsafe {
-        Rc::increment_strong_count(info as *const DisplayState);
-    }
+    unsafe { Rc::increment_strong_count(info as *const DisplayState) };
 
     info
 }
 
 extern "C" fn release(info: *const c_void) {
-    unsafe {
-        Rc::decrement_strong_count(info as *const DisplayState);
-    }
+    // Hold a reference to AppState, since DisplayState is being dropped
+    let state = unsafe { &*(info as *const DisplayState) };
+    let app_state = Rc::clone(&state.app_state);
+
+    app_state.catch_unwind(|| {
+        unsafe { Rc::decrement_strong_count(info as *const DisplayState) };
+    });
 }
 
 extern "C" fn perform(info: *const c_void) {
     let state = unsafe { &*(info as *mut DisplayState) };
 
-    let windows: Vec<*const View> = state.app_state.windows.borrow().keys().copied().collect();
-    for ptr in windows {
-        let window_state = state.app_state.windows.borrow().get(&ptr).cloned();
-        if let Some(window_state) = window_state {
-            if let Some(view) = window_state.view() {
-                let display = display_from_view(&*view);
-                if display == Some(state.display_id) {
-                    view.handle_event(Event::Frame);
+    state.app_state.catch_unwind(|| {
+        let windows: Vec<*const View> = state.app_state.windows.borrow().keys().copied().collect();
+        for ptr in windows {
+            let window_state = state.app_state.windows.borrow().get(&ptr).cloned();
+            if let Some(window_state) = window_state {
+                if let Some(view) = window_state.view() {
+                    let display = display_from_view(&*view);
+                    if display == Some(state.display_id) {
+                        view.handle_event(Event::Frame);
+                    }
                 }
             }
         }
-    }
+    });
 }
 
 struct DisplayState {
