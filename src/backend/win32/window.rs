@@ -152,8 +152,6 @@ pub unsafe extern "system" fn wnd_proc(
                     gdi::DeleteObject(rgn);
 
                     // Only validate the dirty region if we successfully invoked the event handler.
-                    // This ensures that if we receive an expose event during the App::new builder
-                    // callback, we will receive it again later.
                     let state = WindowState::from_raw(state_ptr);
                     if state.handle_event(Event::Expose(&rects)).is_some() {
                         gdi::ValidateRgn(hwnd, gdi::HRGN(0));
