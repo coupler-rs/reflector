@@ -9,7 +9,7 @@ use objc2::rc::{autoreleasepool, Id};
 use objc2::runtime::AnyClass;
 use objc2::ClassType;
 
-use icrate::AppKit::{NSApplication, NSApplicationActivationPolicyRegular, NSCursor, NSImage};
+use icrate::AppKit::{self, NSApplication, NSCursor, NSImage};
 use icrate::Foundation::{NSPoint, NSSize, NSThread};
 
 use super::display_links::DisplayLinks;
@@ -115,7 +115,7 @@ impl AppInner {
             if options.mode == AppMode::Owner {
                 unsafe {
                     let app = NSApplication::sharedApplication();
-                    app.setActivationPolicy(NSApplicationActivationPolicyRegular);
+                    app.setActivationPolicy(AppKit::NSApplicationActivationPolicyRegular);
                     app.activateIgnoringOtherApps(true);
                 }
             }
