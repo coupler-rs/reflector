@@ -9,7 +9,7 @@ use objc2::rc::{autoreleasepool, Id};
 use objc2::runtime::AnyClass;
 use objc2::ClassType;
 
-use icrate::AppKit::{self, NSApplication, NSCursor, NSImage};
+use icrate::AppKit::{self, NSApplication, NSCursor, NSEvent, NSImage};
 use icrate::Foundation::{NSPoint, NSSize, NSThread};
 
 use super::display_links::DisplayLinks;
@@ -51,6 +51,30 @@ pub struct AppState {
 }
 
 impl AppState {
+    pub(crate) fn exit(&self) {
+        if self.running.get() {
+            unsafe {
+                let app = NSApplication::sharedApplication();
+                app.stop(None);
+
+                // Post an NSEvent to ensure that the call to [NSApplication stop] takes effect
+                // immediately, in case we're inside a CFRunLoopTimer or CFRunLoopSource callback.
+                let event = NSEvent::otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2(
+                    AppKit::NSEventTypeApplicationDefined,
+                    NSPoint::new(0.0, 0.0),
+                    0,
+                    0.0,
+                    0,
+                    None,
+                    0,
+                    0,
+                    0,
+                ).unwrap();
+                app.postEvent_atStart(&event, true);
+            }
+        }
+    }
+
     pub(crate) fn catch_unwind<F: FnOnce()>(&self, f: F) {
         let result = panic::catch_unwind(AssertUnwindSafe(f));
 
@@ -58,9 +82,7 @@ impl AppState {
             self.panic.set(Some(panic));
 
             // If we own the event loop, exit and propagate the panic upwards.
-            if self.running.get() {
-                unsafe { NSApplication::sharedApplication().stop(None) };
-            }
+            self.exit();
         }
     }
 }
@@ -154,10 +176,8 @@ impl AppInner {
     }
 
     pub fn exit(&self) {
-        autoreleasepool(|_| unsafe {
-            if self.state.running.get() {
-                NSApplication::sharedApplication().stop(None);
-            }
+        autoreleasepool(|_| {
+            self.state.exit();
         })
     }
 

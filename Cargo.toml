@@ -42,6 +42,7 @@ features = [
     "AppKit_NSImage",
     "AppKit_NSCursor",
     "AppKit_NSTrackingArea",
+    "AppKit_NSGraphicsContext",
     "CoreAnimation",
     "CoreAnimation_CALayer",
     "Foundation_NSNumber",
