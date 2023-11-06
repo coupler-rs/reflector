@@ -102,72 +102,78 @@ pub unsafe extern "system" fn wnd_proc(
 
     let state_ptr = GetWindowLongPtrW(hwnd, msg::GWLP_USERDATA) as *const WindowState;
     if !state_ptr.is_null() {
-        // Hold a reference to the WindowState for the duration of the wnd_proc, in case the
-        // window is closed during an event handler
-        let state_rc = Rc::from_raw(state_ptr);
-        let state = Rc::clone(&state_rc);
-        let _ = Rc::into_raw(state_rc);
+        let app_state = Rc::clone(&(*state_ptr).app_state);
 
         match msg {
             msg::WM_SETCURSOR => {
-                if LOWORD(lparam.0 as u32) == msg::HTCLIENT as u16 {
-                    state.update_cursor();
-                    return LRESULT(0);
-                }
+                app_state.catch_unwind(|| {
+                    if LOWORD(lparam.0 as u32) == msg::HTCLIENT as u16 {
+                        let state = WindowState::from_raw(state_ptr);
+                        state.update_cursor();
+                    }
+                });
+                return LRESULT(0);
             }
             msg::WM_ERASEBKGND => {
                 return LRESULT(1);
             }
             msg::WM_PAINT => {
-                let mut rects = Vec::new();
+                app_state.catch_unwind(|| {
+                    let mut rects = Vec::new();
 
-                let rgn = gdi::CreateRectRgn(0, 0, 0, 0);
-                gdi::GetUpdateRgn(hwnd, rgn, false);
-                let size = gdi::GetRegionData(rgn, 0, None);
-                if size != 0 {
-                    let align = mem::align_of::<gdi::RGNDATA>();
-                    let layout = Layout::from_size_align(size as usize, align).unwrap();
-                    let ptr = alloc(layout) as *mut gdi::RGNDATA;
+                    let rgn = gdi::CreateRectRgn(0, 0, 0, 0);
+                    gdi::GetUpdateRgn(hwnd, rgn, false);
+                    let size = gdi::GetRegionData(rgn, 0, None);
+                    if size != 0 {
+                        let align = mem::align_of::<gdi::RGNDATA>();
+                        let layout = Layout::from_size_align(size as usize, align).unwrap();
+                        let ptr = alloc(layout) as *mut gdi::RGNDATA;
 
-                    let result = gdi::GetRegionData(rgn, size, Some(ptr));
-                    if result == size {
-                        let count = (*ptr).rdh.nCount as usize;
+                        let result = gdi::GetRegionData(rgn, size, Some(ptr));
+                        if result == size {
+                            let count = (*ptr).rdh.nCount as usize;
 
-                        let buffer_ptr = ptr::addr_of!((*ptr).Buffer) as *const RECT;
-                        let buffer = slice::from_raw_parts(buffer_ptr, count);
+                            let buffer_ptr = ptr::addr_of!((*ptr).Buffer) as *const RECT;
+                            let buffer = slice::from_raw_parts(buffer_ptr, count);
 
-                        rects.reserve_exact(count);
-                        for rect in buffer {
-                            rects.push(Rect {
-                                x: rect.left as f64,
-                                y: rect.top as f64,
-                                width: (rect.right - rect.left) as f64,
-                                height: (rect.bottom - rect.top) as f64,
-                            });
+                            rects.reserve_exact(count);
+                            for rect in buffer {
+                                rects.push(Rect {
+                                    x: rect.left as f64,
+                                    y: rect.top as f64,
+                                    width: (rect.right - rect.left) as f64,
+                                    height: (rect.bottom - rect.top) as f64,
+                                });
+                            }
                         }
+
+                        dealloc(ptr as *mut u8, layout);
                     }
+                    gdi::DeleteObject(rgn);
 
-                    dealloc(ptr as *mut u8, layout);
-                }
-                gdi::DeleteObject(rgn);
-
-                // Only validate the dirty region if we successfully invoked the event handler.
-                // This ensures that if we receive an expose event during the App::new builder
-                // callback, we will receive it again later.
-                if state.handle_event(Event::Expose(&rects)).is_some() {
-                    gdi::ValidateRgn(hwnd, gdi::HRGN(0));
-                }
+                    // Only validate the dirty region if we successfully invoked the event handler.
+                    // This ensures that if we receive an expose event during the App::new builder
+                    // callback, we will receive it again later.
+                    let state = WindowState::from_raw(state_ptr);
+                    if state.handle_event(Event::Expose(&rects)).is_some() {
+                        gdi::ValidateRgn(hwnd, gdi::HRGN(0));
+                    }
+                });
 
                 return LRESULT(0);
             }
             msg::WM_MOUSEMOVE => {
-                let point_physical = Point {
-                    x: GET_X_LPARAM(lparam) as f64,
-                    y: GET_Y_LPARAM(lparam) as f64,
-                };
-                let point = point_physical.scale(state.scale().recip());
+                app_state.catch_unwind(|| {
+                    let state = WindowState::from_raw(state_ptr);
 
-                state.handle_event(Event::MouseMove(point));
+                    let point_physical = Point {
+                        x: GET_X_LPARAM(lparam) as f64,
+                        y: GET_Y_LPARAM(lparam) as f64,
+                    };
+                    let point = point_physical.scale(state.scale().recip());
+
+                    state.handle_event(Event::MouseMove(point));
+                });
 
                 return LRESULT(0);
             }
@@ -179,73 +185,95 @@ pub unsafe extern "system" fn wnd_proc(
             | msg::WM_RBUTTONUP
             | msg::WM_XBUTTONDOWN
             | msg::WM_XBUTTONUP => {
-                let button = match msg {
-                    msg::WM_LBUTTONDOWN | msg::WM_LBUTTONUP => Some(MouseButton::Left),
-                    msg::WM_MBUTTONDOWN | msg::WM_MBUTTONUP => Some(MouseButton::Middle),
-                    msg::WM_RBUTTONDOWN | msg::WM_RBUTTONUP => Some(MouseButton::Right),
-                    msg::WM_XBUTTONDOWN | msg::WM_XBUTTONUP => match GET_XBUTTON_WPARAM(wparam) {
-                        msg::XBUTTON1 => Some(MouseButton::Back),
-                        msg::XBUTTON2 => Some(MouseButton::Forward),
-                        _ => None,
-                    },
-                    _ => None,
-                };
+                let mut result = None;
 
-                if let Some(button) = button {
-                    let event = match msg {
-                        msg::WM_LBUTTONDOWN
-                        | msg::WM_MBUTTONDOWN
-                        | msg::WM_RBUTTONDOWN
-                        | msg::WM_XBUTTONDOWN => Some(Event::MouseDown(button)),
-                        msg::WM_LBUTTONUP
-                        | msg::WM_MBUTTONUP
-                        | msg::WM_RBUTTONUP
-                        | msg::WM_XBUTTONUP => Some(Event::MouseUp(button)),
+                app_state.catch_unwind(|| {
+                    let button = match msg {
+                        msg::WM_LBUTTONDOWN | msg::WM_LBUTTONUP => Some(MouseButton::Left),
+                        msg::WM_MBUTTONDOWN | msg::WM_MBUTTONUP => Some(MouseButton::Middle),
+                        msg::WM_RBUTTONDOWN | msg::WM_RBUTTONUP => Some(MouseButton::Right),
+                        msg::WM_XBUTTONDOWN | msg::WM_XBUTTONUP => {
+                            match GET_XBUTTON_WPARAM(wparam) {
+                                msg::XBUTTON1 => Some(MouseButton::Back),
+                                msg::XBUTTON2 => Some(MouseButton::Forward),
+                                _ => None,
+                            }
+                        }
                         _ => None,
                     };
 
-                    if let Some(event) = event {
-                        match event {
-                            Event::MouseDown(_) => {
-                                state.mouse_down_count.set(state.mouse_down_count.get() + 1);
-                                if state.mouse_down_count.get() == 1 {
-                                    SetCapture(hwnd);
-                                }
-                            }
-                            Event::MouseUp(_) => {
-                                state.mouse_down_count.set(state.mouse_down_count.get() - 1);
-                                if state.mouse_down_count.get() == 0 {
-                                    let _ = ReleaseCapture();
-                                }
-                            }
-                            _ => {}
-                        }
+                    if let Some(button) = button {
+                        let event = match msg {
+                            msg::WM_LBUTTONDOWN
+                            | msg::WM_MBUTTONDOWN
+                            | msg::WM_RBUTTONDOWN
+                            | msg::WM_XBUTTONDOWN => Some(Event::MouseDown(button)),
+                            msg::WM_LBUTTONUP
+                            | msg::WM_MBUTTONUP
+                            | msg::WM_RBUTTONUP
+                            | msg::WM_XBUTTONUP => Some(Event::MouseUp(button)),
+                            _ => None,
+                        };
 
-                        if state.handle_event(event) == Some(Response::Capture) {
-                            return LRESULT(0);
+                        if let Some(event) = event {
+                            let state = WindowState::from_raw(state_ptr);
+
+                            match event {
+                                Event::MouseDown(_) => {
+                                    state.mouse_down_count.set(state.mouse_down_count.get() + 1);
+                                    if state.mouse_down_count.get() == 1 {
+                                        SetCapture(hwnd);
+                                    }
+                                }
+                                Event::MouseUp(_) => {
+                                    state.mouse_down_count.set(state.mouse_down_count.get() - 1);
+                                    if state.mouse_down_count.get() == 0 {
+                                        let _ = ReleaseCapture();
+                                    }
+                                }
+                                _ => {}
+                            }
+
+                            result = state.handle_event(event);
                         }
                     }
+                });
+
+                if result == Some(Response::Capture) {
+                    return LRESULT(0);
                 }
             }
             msg::WM_MOUSEWHEEL | msg::WM_MOUSEHWHEEL => {
-                let delta = GET_WHEEL_DELTA_WPARAM(wparam) as f64 / WHEEL_DELTA as f64;
-                let point = match msg {
-                    msg::WM_MOUSEWHEEL => Point::new(0.0, delta),
-                    msg::WM_MOUSEHWHEEL => Point::new(delta, 0.0),
-                    _ => unreachable!(),
-                };
+                let mut result = None;
 
-                if state.handle_event(Event::Scroll(point)) == Some(Response::Capture) {
+                app_state.catch_unwind(|| {
+                    let delta = GET_WHEEL_DELTA_WPARAM(wparam) as f64 / WHEEL_DELTA as f64;
+                    let point = match msg {
+                        msg::WM_MOUSEWHEEL => Point::new(0.0, delta),
+                        msg::WM_MOUSEHWHEEL => Point::new(delta, 0.0),
+                        _ => unreachable!(),
+                    };
+
+                    let state = WindowState::from_raw(state_ptr);
+                    result = state.handle_event(Event::Scroll(point));
+                });
+
+                if result == Some(Response::Capture) {
                     return LRESULT(0);
                 }
             }
             msg::WM_CLOSE => {
-                state.handle_event(Event::Close);
+                app_state.catch_unwind(|| {
+                    let state = WindowState::from_raw(state_ptr);
+                    state.handle_event(Event::Close);
+                });
                 return LRESULT(0);
             }
             msg::WM_DESTROY => {
-                drop(Rc::from_raw(state_ptr));
                 SetWindowLongPtrW(hwnd, msg::GWLP_USERDATA, 0);
+                app_state.catch_unwind(|| {
+                    drop(Rc::from_raw(state_ptr));
+                });
             }
             _ => {}
         }
@@ -263,6 +291,14 @@ pub struct WindowState {
 }
 
 impl WindowState {
+    unsafe fn from_raw(ptr: *const WindowState) -> Rc<WindowState> {
+        let state_rc = Rc::from_raw(ptr);
+        let state = Rc::clone(&state_rc);
+        let _ = Rc::into_raw(state_rc);
+
+        state
+    }
+
     fn update_cursor(&self) {
         unsafe {
             let hcursor = match self.cursor.get() {

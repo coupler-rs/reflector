@@ -1,5 +1,7 @@
+use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::panic::{self, AssertUnwindSafe};
 use std::rc::Rc;
 use std::time::Duration;
 use std::{mem, ptr};
@@ -63,14 +65,20 @@ pub unsafe extern "system" fn message_wnd_proc(
 
         match msg {
             msg::WM_TIMER => {
-                app_state.timers.handle_timer(&app_state, wparam.0);
+                app_state.catch_unwind(|| {
+                    app_state.timers.handle_timer(&app_state, wparam.0);
+                });
             }
             WM_USER_VBLANK => {
-                app_state.vsync_threads.handle_vblank(&app_state, HMONITOR(lparam.0));
+                app_state.catch_unwind(|| {
+                    app_state.vsync_threads.handle_vblank(&app_state, HMONITOR(lparam.0));
+                });
             }
             msg::WM_DESTROY => {
-                drop(Rc::from_raw(app_state_ptr));
                 SetWindowLongPtrW(hwnd, msg::GWLP_USERDATA, 0);
+                app_state.catch_unwind(|| {
+                    drop(Rc::from_raw(app_state_ptr));
+                });
             }
             _ => {}
         }
@@ -104,6 +112,7 @@ impl<'a> Drop for RunGuard<'a> {
 pub struct AppState {
     pub open: Cell<bool>,
     pub running: Cell<bool>,
+    pub panic: Cell<Option<Box<dyn Any + Send>>>,
     pub message_class: PCWSTR,
     pub message_hwnd: HWND,
     pub window_class: PCWSTR,
@@ -111,6 +120,21 @@ pub struct AppState {
     pub timers: Timers,
     pub vsync_threads: VsyncThreads,
     pub windows: RefCell<HashMap<isize, Rc<WindowState>>>,
+}
+
+impl AppState {
+    pub(crate) fn catch_unwind<F: FnOnce()>(&self, f: F) {
+        let result = panic::catch_unwind(AssertUnwindSafe(f));
+
+        if let Err(panic) = result {
+            self.panic.set(Some(panic));
+
+            // If we own the event loop, exit and propagate the panic upwards.
+            if self.running.get() {
+                unsafe { PostQuitMessage(0) };
+            }
+        }
+    }
 }
 
 pub struct AppInner {
@@ -155,6 +179,7 @@ impl AppInner {
         let state = Rc::new(AppState {
             open: Cell::new(true),
             running: Cell::new(false),
+            panic: Cell::new(None),
             message_class,
             message_hwnd,
             window_class,
@@ -192,21 +217,27 @@ impl AppInner {
 
         let _run_guard = RunGuard::new(&self.state.running)?;
 
-        loop {
+        let result = loop {
             unsafe {
                 let mut msg: MSG = mem::zeroed();
 
                 let result = GetMessageW(&mut msg, HWND(0), 0, 0);
                 if result.0 < 0 {
-                    return Err(windows::core::Error::from_win32().into());
+                    break Err(windows::core::Error::from_win32().into());
                 } else if result.0 == 0 {
-                    return Ok(());
+                    break Ok(());
                 }
 
                 TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
+        };
+
+        if let Some(panic) = self.state.panic.take() {
+            panic::resume_unwind(panic);
         }
+
+        result
     }
 
     pub fn exit(&self) {
@@ -228,17 +259,23 @@ impl AppInner {
 
                 let result = PeekMessageW(&mut msg, HWND(0), 0, 0, msg::PM_REMOVE);
                 if result.0 == 0 {
-                    return Ok(());
+                    break;
                 }
 
                 if msg.message == msg::WM_QUIT {
-                    return Ok(());
+                    break;
                 }
 
                 TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
         }
+
+        if let Some(panic) = self.state.panic.take() {
+            panic::resume_unwind(panic);
+        }
+
+        Ok(())
     }
 
     pub fn shutdown(&self) {
