@@ -42,13 +42,17 @@ impl Thread {
                             return;
                         }
 
-                        state.pending.store(true, Ordering::Relaxed);
-                        let _ = PostMessageW(
-                            message_hwnd,
-                            WM_USER_VBLANK,
-                            WPARAM(0),
-                            LPARAM(monitor.0),
-                        );
+                        let was_pending = state.pending.swap(true, Ordering::Relaxed);
+
+                        // Only deliver a vblank message if the previous one has been acknowledged.
+                        if !was_pending {
+                            let _ = PostMessageW(
+                                message_hwnd,
+                                WM_USER_VBLANK,
+                                WPARAM(0),
+                                LPARAM(monitor.0),
+                            );
+                        }
                     }
                 }
             }
@@ -92,18 +96,6 @@ impl VsyncThreads {
     }
 
     pub fn handle_vblank(&self, app_state: &Rc<AppState>, monitor: HMONITOR) {
-        let was_pending = if let Some(thread) = self.threads.borrow().get(&monitor.0) {
-            thread.state.pending.swap(false, Ordering::Relaxed)
-        } else {
-            false
-        };
-
-        // If we've received multiple vblank messages for this monitor since the last time we
-        // handled one, only handle the first one.
-        if !was_pending {
-            return;
-        }
-
         let windows: Vec<isize> = app_state.windows.borrow().keys().copied().collect();
         for hwnd in windows {
             let window_monitor = unsafe { MonitorFromWindow(HWND(hwnd), MONITOR_DEFAULTTONEAREST) };
@@ -113,6 +105,10 @@ impl VsyncThreads {
                     window.handle_event(Event::Frame);
                 }
             }
+        }
+
+        if let Some(thread) = self.threads.borrow().get(&monitor.0) {
+            thread.state.pending.store(false, Ordering::Relaxed);
         }
     }
 
