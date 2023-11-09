@@ -106,13 +106,13 @@ pub unsafe extern "system" fn wnd_proc(
 
         match msg {
             msg::WM_SETCURSOR => {
-                app_state.catch_unwind(|| {
-                    if LOWORD(lparam.0 as u32) == msg::HTCLIENT as u16 {
+                if LOWORD(lparam.0 as u32) == msg::HTCLIENT as u16 {
+                    app_state.catch_unwind(|| {
                         let state = WindowState::from_raw(state_ptr);
                         state.update_cursor();
-                    }
-                });
-                return LRESULT(0);
+                    });
+                    return LRESULT(1);
+                }
             }
             msg::WM_ERASEBKGND => {
                 return LRESULT(1);
