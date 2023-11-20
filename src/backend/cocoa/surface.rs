@@ -10,6 +10,8 @@ use core_foundation::dictionary::CFDictionary;
 use core_foundation::number::CFNumber;
 use core_foundation::string::CFString;
 
+use crate::{Result, Error};
+use super::OsError;
 use super::ffi::io_surface::*;
 
 const BYTES_PER_ELEMENT: usize = 4;
@@ -30,7 +32,7 @@ pub struct Surface {
 }
 
 impl Surface {
-    pub fn new(width: usize, height: usize) -> Surface {
+    pub fn new(width: usize, height: usize) -> Result<Surface> {
         unsafe {
             let properties = CFDictionary::from_CFType_pairs(&[
                 (
@@ -52,6 +54,9 @@ impl Surface {
             ]);
 
             let surface = IOSurfaceCreate(properties.as_concrete_TypeRef());
+            if surface.is_null() {
+                return Err(Error::Os(OsError::Other("could not create IOSurface")));
+            }
 
             IOSurfaceSetValue(
                 surface,
@@ -66,12 +71,12 @@ impl Surface {
             layer.setContentsGravity(kCAGravityTopLeft);
             layer.setMagnificationFilter(kCAFilterNearest);
 
-            Surface {
+            Ok(Surface {
                 layer,
                 surface,
                 width,
                 height,
-            }
+            })
         }
     }
 

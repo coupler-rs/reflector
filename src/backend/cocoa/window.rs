@@ -519,7 +519,7 @@ impl WindowInner {
             let surface = Surface::new(
                 (scale * options.size.width).round() as usize,
                 (scale * options.size.height).round() as usize,
-            );
+            )?;
 
             unsafe {
                 let () = msg_send![&*view, setLayer: &*surface.layer];
