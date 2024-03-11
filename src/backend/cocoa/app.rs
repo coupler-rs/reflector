@@ -10,7 +10,7 @@ use objc2::runtime::AnyClass;
 use objc2::ClassType;
 
 use icrate::AppKit::{self, NSApplication, NSCursor, NSEvent, NSImage};
-use icrate::Foundation::{NSPoint, NSSize, NSThread};
+use icrate::Foundation::{MainThreadMarker, NSPoint, NSSize};
 
 use super::display_links::DisplayLinks;
 use super::timer::{TimerInner, Timers};
@@ -48,18 +48,19 @@ pub struct AppState {
     pub timers: Timers,
     pub display_links: DisplayLinks,
     pub windows: RefCell<HashMap<*const View, Rc<WindowState>>>,
+    pub mtm: MainThreadMarker,
 }
 
 impl AppState {
     pub(crate) fn exit(&self) {
         if self.running.get() {
-            unsafe {
-                let app = NSApplication::sharedApplication();
-                app.stop(None);
+            let app = NSApplication::sharedApplication(self.mtm);
+            app.stop(None);
 
+            let event = unsafe {
                 // Post an NSEvent to ensure that the call to [NSApplication stop] takes effect
                 // immediately, in case we're inside a CFRunLoopTimer or CFRunLoopSource callback.
-                let event = NSEvent::otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2(
+                NSEvent::otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2(
                     AppKit::NSEventTypeApplicationDefined,
                     NSPoint::new(0.0, 0.0),
                     0,
@@ -69,9 +70,9 @@ impl AppState {
                     0,
                     0,
                     0,
-                ).unwrap();
-                app.postEvent_atStart(&event, true);
-            }
+                ).unwrap()
+            };
+            app.postEvent_atStart(&event, true);
         }
     }
 
@@ -102,10 +103,7 @@ pub struct AppInner {
 impl AppInner {
     pub fn new(options: &AppOptions) -> Result<AppInner> {
         autoreleasepool(|_| {
-            assert!(
-                NSThread::isMainThread_class(),
-                "App must be created on the main thread"
-            );
+            let mtm = MainThreadMarker::new().expect("App must be created on the main thread");
 
             let class = View::register_class()?;
 
@@ -130,16 +128,16 @@ impl AppInner {
                 timers: Timers::new(),
                 display_links: DisplayLinks::new(),
                 windows: RefCell::new(HashMap::new()),
+                mtm,
             });
 
             state.display_links.init(&state);
 
             if options.mode == AppMode::Owner {
-                unsafe {
-                    let app = NSApplication::sharedApplication();
-                    app.setActivationPolicy(AppKit::NSApplicationActivationPolicyRegular);
-                    app.activateIgnoringOtherApps(true);
-                }
+                let app = NSApplication::sharedApplication(mtm);
+                app.setActivationPolicy(AppKit::NSApplicationActivationPolicyRegular);
+                #[allow(deprecated)]
+                app.activateIgnoringOtherApps(true);
             }
 
             Ok(AppInner { state })
@@ -158,14 +156,17 @@ impl AppInner {
     }
 
     pub fn run(&self) -> Result<()> {
-        autoreleasepool(|_| unsafe {
+        autoreleasepool(|_| {
             if !self.state.open.get() {
                 return Err(Error::AppDropped);
             }
 
             let _run_guard = RunGuard::new(&self.state.running)?;
 
-            NSApplication::sharedApplication().run();
+            let app = NSApplication::sharedApplication(self.state.mtm);
+            unsafe {
+                app.run();
+            }
 
             if let Some(panic) = self.state.panic.take() {
                 panic::resume_unwind(panic);

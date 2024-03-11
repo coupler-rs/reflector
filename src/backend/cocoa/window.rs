@@ -3,19 +3,17 @@ use std::ffi::c_void;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
-use objc2::declare::{ClassBuilder, Ivar, IvarEncode, IvarType};
+use objc2::declare::ClassBuilder;
 use objc2::encode::Encoding;
 use objc2::rc::{autoreleasepool, Allocated, Id};
-use objc2::runtime::{AnyClass, Bool, ProtocolObject, Sel};
+use objc2::runtime::{AnyClass, Bool, MessageReceiver, Sel};
 use objc2::{class, msg_send, msg_send_id, sel};
-use objc2::{ClassType, Message, MessageReceiver, RefEncode};
+use objc2::{ClassType, Message, RefEncode};
 
 use objc_sys::{objc_class, objc_disposeClassPair};
 
-use icrate::AppKit::{
-    NSCursor, NSEvent, NSScreen, NSTrackingArea, NSView, NSWindow, NSWindowDelegate,
-};
-use icrate::Foundation::{NSInteger, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString};
+use icrate::AppKit::{NSCursor, NSEvent, NSScreen, NSTrackingArea, NSView, NSWindow};
+use icrate::Foundation::{NSInteger, NSPoint, NSRect, NSSize, NSString};
 
 use super::app::{AppInner, AppState};
 use super::surface::Surface;
@@ -50,17 +48,9 @@ fn mouse_button_from_number(button_number: NSInteger) -> Option<MouseButton> {
     }
 }
 
-struct StateIvar;
-
-unsafe impl IvarType for StateIvar {
-    type Type = IvarEncode<Cell<*mut c_void>>;
-    const NAME: &'static str = "windowState";
-}
-
 #[repr(C)]
 pub struct View {
     superclass: NSView,
-    state: Ivar<StateIvar>,
 }
 
 unsafe impl RefEncode for View {
@@ -68,9 +58,6 @@ unsafe impl RefEncode for View {
 }
 
 unsafe impl Message for View {}
-
-unsafe impl NSObjectProtocol for View {}
-unsafe impl NSWindowDelegate for View {}
 
 impl Deref for View {
     type Target = NSView;
@@ -95,7 +82,7 @@ impl View {
             )));
         };
 
-        builder.add_static_ivar::<StateIvar>();
+        builder.add_ivar::<Cell<*mut c_void>>("windowState");
 
         unsafe {
             builder.add_method(
@@ -168,12 +155,17 @@ impl View {
         objc_disposeClassPair(class as *const _ as *mut objc_class);
     }
 
+    fn state_ivar(&self) -> &Cell<*mut c_void> {
+        let ivar = self.class().instance_variable("windowState").unwrap();
+        unsafe { ivar.load::<Cell<*mut c_void>>(self) }
+    }
+
     fn state(&self) -> &WindowState {
-        unsafe { &*(self.state.get() as *const WindowState) }
+        unsafe { &*(self.state_ivar().get() as *const WindowState) }
     }
 
     pub fn handle_event(&self, event: Event) -> Option<Response> {
-        let state_rc = unsafe { Rc::from_raw(self.state.get() as *const WindowState) };
+        let state_rc = unsafe { Rc::from_raw(self.state_ivar().get() as *const WindowState) };
         let state = Rc::clone(&state_rc);
         let _ = Rc::into_raw(state_rc);
 
@@ -334,7 +326,7 @@ impl View {
         let app_state = Rc::clone(&self.state().app_state);
 
         app_state.catch_unwind(|| {
-            drop(Rc::from_raw(self.state.get() as *const WindowState));
+            drop(Rc::from_raw(self.state_ivar().get() as *const WindowState));
 
             let () = msg_send![super(self, NSView::class()), dealloc];
         });
@@ -377,11 +369,11 @@ impl WindowState {
         let cursor = self.cursor.get();
 
         let ns_cursor = match cursor {
-            Cursor::Arrow => unsafe { NSCursor::arrowCursor() },
-            Cursor::Crosshair => unsafe { NSCursor::crosshairCursor() },
-            Cursor::Hand => unsafe { NSCursor::pointingHandCursor() },
-            Cursor::IBeam => unsafe { NSCursor::IBeamCursor() },
-            Cursor::No => unsafe { NSCursor::operationNotAllowedCursor() },
+            Cursor::Arrow => NSCursor::arrowCursor(),
+            Cursor::Crosshair => NSCursor::crosshairCursor(),
+            Cursor::Hand => NSCursor::pointingHandCursor(),
+            Cursor::IBeam => NSCursor::IBeamCursor(),
+            Cursor::No => NSCursor::operationNotAllowedCursor(),
             Cursor::SizeNs => try_get_cursor(sel!(_windowResizeNorthSouthCursor)),
             Cursor::SizeWe => try_get_cursor(sel!(_windowResizeEastWestCursor)),
             Cursor::SizeNesw => try_get_cursor(sel!(_windowResizeNorthEastSouthWestCursor)),
@@ -397,7 +389,7 @@ impl WindowState {
 
     pub fn close(&self) {
         if let Some(window) = self.window.take() {
-            unsafe { window.close() };
+            window.close();
         }
 
         if let Some(view) = self.view.take() {
@@ -452,9 +444,9 @@ impl WindowInner {
                 handler: RefCell::new(Box::new(handler)),
             });
 
-            let view: Option<Allocated<View>> = unsafe { msg_send_id![app_state.class, alloc] };
+            let view: Allocated<View> = unsafe { msg_send_id![app_state.class, alloc] };
             let view: Id<View> = unsafe { msg_send_id![view, initWithFrame: frame] };
-            view.state.set(Rc::into_raw(Rc::clone(&state)) as *mut c_void);
+            view.state_ivar().set(Rc::into_raw(Rc::clone(&state)) as *mut c_void);
 
             state.view.replace(Some(view.retain()));
 
@@ -495,7 +487,7 @@ impl WindowInner {
 
                 let window = unsafe {
                     NSWindow::initWithContentRect_styleMask_backing_defer(
-                        NSWindow::alloc(),
+                        app_state.mtm.alloc::<NSWindow>(),
                         content_rect,
                         style_mask,
                         icrate::AppKit::NSBackingStoreBuffered,
@@ -508,8 +500,7 @@ impl WindowInner {
 
                     window.setTitle(&NSString::from_str(&options.title));
 
-                    let delegate = ProtocolObject::<dyn NSWindowDelegate>::from_ref(&*view);
-                    window.setDelegate(Some(&delegate));
+                    let () = msg_send![&*window, setDelegate: &*view];
                     window.setContentView(Some(&view));
 
                     if options.position.is_none() {
@@ -547,11 +538,11 @@ impl WindowInner {
     pub fn show(&self) {
         autoreleasepool(|_| {
             if let Some(window) = self.state.window() {
-                unsafe { window.orderFront(None) };
+                window.orderFront(None);
             }
 
             if let Some(view) = self.state.view() {
-                unsafe { view.setHidden(false) };
+                view.setHidden(false);
             }
         })
     }
@@ -559,11 +550,11 @@ impl WindowInner {
     pub fn hide(&self) {
         autoreleasepool(|_| {
             if let Some(window) = self.state.window() {
-                unsafe { window.orderOut(None) };
+                window.orderOut(None);
             }
 
             if let Some(view) = self.state.view() {
-                unsafe { view.setHidden(true) };
+                view.setHidden(true);
             }
         })
     }
@@ -571,7 +562,7 @@ impl WindowInner {
     pub fn size(&self) -> Size {
         autoreleasepool(|_| {
             if let Some(view) = self.state.view() {
-                let frame = unsafe { view.frame() };
+                let frame = view.frame();
 
                 Size::new(frame.size.width, frame.size.height)
             } else {
@@ -583,10 +574,10 @@ impl WindowInner {
     pub fn scale(&self) -> f64 {
         autoreleasepool(|_| {
             if let Some(view) = self.state.view() {
-                if let Some(window) = unsafe { view.window() } {
-                    return unsafe { window.backingScaleFactor() };
-                } else if let Some(screen) = unsafe { NSScreen::screens() }.get(0) {
-                    return unsafe { screen.backingScaleFactor() };
+                if let Some(window) = view.window() {
+                    return window.backingScaleFactor();
+                } else if let Some(screen) = NSScreen::screens(self.state.app_state.mtm).get(0) {
+                    return screen.backingScaleFactor();
                 }
             }
 

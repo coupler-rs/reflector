@@ -26,13 +26,13 @@ features = [
 ]
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = { version = "0.4.1", features = ["catch-all"] }
+objc2 = { version = "0.5.0", features = ["catch-all"] }
 objc-sys = "0.3.1"
 core-foundation = "0.9.3"
 getrandom = "0.2.10"
 
 [target.'cfg(target_os = "macos")'.dependencies.icrate]
-version = "0.0.4"
+version = "0.1.0"
 features = [
     "AppKit",
     "AppKit_NSView",
@@ -43,8 +43,6 @@ features = [
     "AppKit_NSCursor",
     "AppKit_NSTrackingArea",
     "AppKit_NSGraphicsContext",
-    "CoreAnimation",
-    "CoreAnimation_CALayer",
     "Foundation_NSNumber",
     "Foundation_NSThread",
 ]

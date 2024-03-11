@@ -6,9 +6,8 @@ use std::rc::Rc;
 
 use objc2::rc::Id;
 
-use icrate::ns_string;
 use icrate::AppKit::NSScreen;
-use icrate::Foundation::NSNumber;
+use icrate::Foundation::{ns_string, NSNumber};
 
 use core_foundation::base::{CFRelease, CFTypeRef};
 use core_foundation::runloop::*;
@@ -28,7 +27,7 @@ fn display_from_screen(screen: &NSScreen) -> Option<CGDirectDisplayID> {
 }
 
 fn display_from_view(view: &View) -> Option<CGDirectDisplayID> {
-    let screen = unsafe { view.window()?.screen()? };
+    let screen = view.window()?.screen()?;
     display_from_screen(&*screen)
 }
 
@@ -156,7 +155,7 @@ impl DisplayLinks {
     }
 
     pub fn init(&self, app_state: &Rc<AppState>) {
-        for screen in unsafe { NSScreen::screens() } {
+        for screen in NSScreen::screens(app_state.mtm) {
             if let Some(id) = display_from_screen(&*screen) {
                 self.displays.borrow_mut().insert(id, Display::new(app_state, id));
             }

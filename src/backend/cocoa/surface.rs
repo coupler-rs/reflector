@@ -3,7 +3,7 @@ use std::{mem, ptr, slice};
 use objc2::msg_send;
 use objc2::rc::Id;
 
-use icrate::CoreAnimation::{kCAFilterNearest, kCAGravityTopLeft, CALayer};
+use super::ffi::layer::*;
 
 use core_foundation::base::{CFRelease, CFTypeRef, TCFType};
 use core_foundation::dictionary::CFDictionary;
