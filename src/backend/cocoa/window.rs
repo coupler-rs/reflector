@@ -321,14 +321,16 @@ impl View {
         Bool::NO
     }
 
-    unsafe extern "C" fn dealloc(&self, _: Sel) {
+    unsafe extern "C" fn dealloc(this: *mut Self, _: Sel) {
         // Hold a reference to AppState, since WindowState is being dropped
-        let app_state = Rc::clone(&self.state().app_state);
+        let app_state = Rc::clone(&(*this).state().app_state);
 
         app_state.catch_unwind(|| {
-            drop(Rc::from_raw(self.state_ivar().get() as *const WindowState));
+            drop(Rc::from_raw(
+                (*this).state_ivar().get() as *const WindowState
+            ));
 
-            let () = msg_send![super(self, NSView::class()), dealloc];
+            let () = msg_send![super(this, NSView::class()), dealloc];
         });
     }
 }
