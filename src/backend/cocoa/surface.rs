@@ -10,9 +10,9 @@ use core_foundation::dictionary::CFDictionary;
 use core_foundation::number::CFNumber;
 use core_foundation::string::CFString;
 
-use crate::{Result, Error};
-use super::OsError;
 use super::ffi::io_surface::*;
+use super::OsError;
+use crate::{Error, Result};
 
 const BYTES_PER_ELEMENT: usize = 4;
 

@@ -90,7 +90,9 @@ impl View {
     pub fn register_class() -> Result<&'static AnyClass> {
         let name = class_name();
         let Some(mut builder) = ClassBuilder::new(&name, class!(NSView)) else {
-            return Err(Error::Os(OsError::Other("could not declare NSView subclass")));
+            return Err(Error::Os(OsError::Other(
+                "could not declare NSView subclass",
+            )));
         };
 
         builder.add_static_ivar::<StateIvar>();
@@ -202,7 +204,9 @@ impl View {
 
     unsafe extern "C" fn mouse_moved(&self, _: Sel, event: Option<&NSEvent>) {
         self.state().app_state.catch_unwind(|| {
-            let Some(event) = event else { return; };
+            let Some(event) = event else {
+                return;
+            };
 
             let point = self.convertPoint_fromView(event.locationInWindow(), None);
             self.handle_event(Event::MouseMove(Point {
@@ -254,7 +258,9 @@ impl View {
 
     unsafe extern "C" fn other_mouse_down(&self, _: Sel, event: Option<&NSEvent>) {
         self.state().app_state.catch_unwind(|| {
-            let Some(event) = event else { return; };
+            let Some(event) = event else {
+                return;
+            };
 
             let button_number = event.buttonNumber();
             let result = if let Some(button) = mouse_button_from_number(button_number) {
@@ -271,7 +277,9 @@ impl View {
 
     unsafe extern "C" fn other_mouse_up(&self, _: Sel, event: Option<&NSEvent>) {
         self.state().app_state.catch_unwind(|| {
-            let Some(event) = event else { return; };
+            let Some(event) = event else {
+                return;
+            };
 
             let button_number = event.buttonNumber();
             let result = if let Some(button) = mouse_button_from_number(button_number) {
@@ -288,7 +296,9 @@ impl View {
 
     unsafe extern "C" fn scroll_wheel(&self, _: Sel, event: Option<&NSEvent>) {
         self.state().app_state.catch_unwind(|| {
-            let Some(event) = event else { return; };
+            let Some(event) = event else {
+                return;
+            };
 
             let dx = event.scrollingDeltaX();
             let dy = event.scrollingDeltaY();
