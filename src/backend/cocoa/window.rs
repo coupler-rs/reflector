@@ -631,4 +631,12 @@ impl WindowInner {
             self.state.close();
         })
     }
+
+    pub fn as_raw(&self) -> Result<RawWindow> {
+        if let Some(view) = self.state.view.borrow().as_ref() {
+            Ok(RawWindow::Cocoa(Id::as_ptr(view) as *mut c_void))
+        } else {
+            Err(Error::WindowClosed)
+        }
+    }
 }

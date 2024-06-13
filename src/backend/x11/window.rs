@@ -1,5 +1,5 @@
 use std::cell::{Cell, RefCell};
-use std::ffi::{c_int, c_void};
+use std::ffi::{c_int, c_ulong, c_void};
 use std::rc::Rc;
 use std::{mem, ptr, slice};
 
@@ -441,5 +441,13 @@ impl WindowInner {
         self.state.close();
 
         let _ = self.state.app_state.connection.flush();
+    }
+
+    pub fn as_raw(&self) -> Result<RawWindow> {
+        if let Some(window_id) = self.state.window_id.get() {
+            Ok(RawWindow::X11(window_id as c_ulong))
+        } else {
+            Err(Error::WindowClosed)
+        }
     }
 }

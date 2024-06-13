@@ -281,6 +281,10 @@ impl Window {
     pub fn close(&self) {
         self.inner.close();
     }
+
+    pub fn as_raw(&self) -> Result<RawWindow> {
+        self.inner.as_raw()
+    }
 }
 
 impl fmt::Debug for Window {

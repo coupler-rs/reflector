@@ -616,4 +616,12 @@ impl WindowInner {
 
         self.state.close();
     }
+
+    pub fn as_raw(&self) -> Result<RawWindow> {
+        if let Some(hwnd) = self.state.hwnd.get() {
+            Ok(RawWindow::Win32(hwnd.0 as *mut c_void))
+        } else {
+            Err(Error::WindowClosed)
+        }
+    }
 }
