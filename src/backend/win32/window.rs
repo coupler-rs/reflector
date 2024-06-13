@@ -18,7 +18,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use super::app::{AppInner, AppState};
 use super::{class_name, hinstance, to_wstring};
 use crate::{
-    AppHandle, Bitmap, Cursor, Error, Event, MouseButton, Point, RawParent, Rect, Response, Result,
+    AppHandle, Bitmap, Cursor, Error, Event, MouseButton, Point, RawWindow, Rect, Response, Result,
     Size, Window, WindowContext, WindowOptions,
 };
 
@@ -381,7 +381,7 @@ impl WindowInner {
             }
 
             let parent = if let Some(parent) = options.parent {
-                if let RawParent::Win32(hwnd) = parent {
+                if let RawWindow::Win32(hwnd) = parent {
                     HWND(hwnd as isize)
                 } else {
                     return Err(Error::InvalidWindowHandle);

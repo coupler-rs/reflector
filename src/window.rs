@@ -146,7 +146,7 @@ pub enum Response {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum RawParent {
+pub enum RawWindow {
     Win32(*mut c_void),
     Cocoa(*mut c_void),
     X11(c_ulong),
@@ -157,7 +157,7 @@ pub struct WindowOptions {
     pub(crate) title: String,
     pub(crate) position: Option<Point>,
     pub(crate) size: Size,
-    pub(crate) parent: Option<RawParent>,
+    pub(crate) parent: Option<RawWindow>,
 }
 
 impl Default for WindowOptions {
@@ -191,7 +191,7 @@ impl WindowOptions {
         self
     }
 
-    pub unsafe fn raw_parent(&mut self, parent: RawParent) -> &mut Self {
+    pub unsafe fn raw_parent(&mut self, parent: RawWindow) -> &mut Self {
         self.parent = Some(parent);
         self
     }

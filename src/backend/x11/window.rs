@@ -15,7 +15,7 @@ use x11rb::wrapper::ConnectionExt as _;
 use super::app::{AppInner, AppState};
 use super::OsError;
 use crate::{
-    AppHandle, Bitmap, Cursor, Error, Event, Point, RawParent, Rect, Response, Result, Size,
+    AppHandle, Bitmap, Cursor, Error, Event, Point, RawWindow, Rect, Response, Result, Size,
     WindowContext, WindowOptions,
 };
 
@@ -151,7 +151,7 @@ impl WindowInner {
         let window_id = connection.generate_id()?;
 
         let parent_id = if let Some(parent) = options.parent {
-            if let RawParent::X11(parent_id) = parent {
+            if let RawWindow::X11(parent_id) = parent {
                 parent_id as Window
             } else {
                 return Err(Error::InvalidWindowHandle);

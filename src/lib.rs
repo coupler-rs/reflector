@@ -8,6 +8,6 @@ pub use app::{App, AppHandle, AppMode, AppOptions};
 pub use error::{Error, Result};
 pub use timer::{Timer, TimerContext};
 pub use window::{
-    Bitmap, Cursor, Event, MouseButton, Point, RawParent, Rect, Response, Size, Window,
+    Bitmap, Cursor, Event, MouseButton, Point, RawWindow, Rect, Response, Size, Window,
     WindowContext, WindowOptions,
 };

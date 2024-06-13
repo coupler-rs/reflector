@@ -19,7 +19,7 @@ use super::app::{AppInner, AppState};
 use super::surface::Surface;
 use super::OsError;
 use crate::{
-    AppHandle, Bitmap, Cursor, Error, Event, MouseButton, Point, RawParent, Rect, Response, Result,
+    AppHandle, Bitmap, Cursor, Error, Event, MouseButton, Point, RawWindow, Rect, Response, Result,
     Size, Window, WindowContext, WindowOptions,
 };
 
@@ -418,7 +418,7 @@ impl WindowInner {
             let app_state = &app.inner.state;
 
             let parent_view = if let Some(parent) = options.parent {
-                if let RawParent::Cocoa(parent_view) = parent {
+                if let RawWindow::Cocoa(parent_view) = parent {
                     Some(parent_view as *const NSView)
                 } else {
                     return Err(Error::InvalidWindowHandle);
