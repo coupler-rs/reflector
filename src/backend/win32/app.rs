@@ -127,11 +127,13 @@ impl AppState {
         let result = panic::catch_unwind(AssertUnwindSafe(f));
 
         if let Err(panic) = result {
-            self.panic.set(Some(panic));
-
-            // If we own the event loop, exit and propagate the panic upwards.
             if self.running.get() {
+                // If we own the event loop, exit and propagate the panic upwards.
+                self.panic.set(Some(panic));
                 unsafe { PostQuitMessage(0) };
+            } else {
+                // Otherwise, just abort.
+                std::process::abort();
             }
         }
     }
