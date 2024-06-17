@@ -10,7 +10,7 @@ fn main() {
             let mut framebuffer = Vec::new();
             move |cx, event| {
                 match event {
-                    Event::Expose(..) => {
+                    Event::Frame => {
                         let scale = cx.window().scale();
                         let size = cx.window().size();
                         let width = (scale * size.width) as usize;
@@ -42,7 +42,7 @@ fn main() {
             let mut framebuffer = Vec::new();
             move |cx, event| {
                 match event {
-                    Event::Expose(..) => {
+                    Event::Frame => {
                         let scale = cx.window().scale();
                         let size = cx.window().size();
                         let width = (scale * size.width) as usize;
