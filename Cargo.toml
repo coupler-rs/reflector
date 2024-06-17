@@ -26,25 +26,33 @@ features = [
 ]
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = { version = "0.5.0", features = ["catch-all"] }
+objc2 = { version = "0.5.2", features = ["catch-all"] }
 objc-sys = "0.3.1"
 core-foundation = "0.9.3"
 getrandom = "0.2.10"
 
-[target.'cfg(target_os = "macos")'.dependencies.icrate]
-version = "0.1.0"
+[target.'cfg(target_os = "macos")'.dependencies.objc2-foundation]
+version = "0.2.2"
 features = [
-    "AppKit",
-    "AppKit_NSView",
-    "AppKit_NSWindow",
-    "AppKit_NSScreen",
-    "AppKit_NSEvent",
-    "AppKit_NSImage",
-    "AppKit_NSCursor",
-    "AppKit_NSTrackingArea",
-    "AppKit_NSGraphicsContext",
-    "Foundation_NSNumber",
-    "Foundation_NSThread",
+    "NSEnumerator",
+    "NSThread",
+]
+
+[target.'cfg(target_os = "macos")'.dependencies.objc2-app-kit]
+version = "0.2.2"
+features = [
+    "NSApplication",
+    "NSRunningApplication",
+    "NSResponder",
+    "NSView",
+    "NSWindow",
+    "NSScreen",
+    "NSEvent",
+    "NSCursor",
+    "NSTrackingArea",
+    "NSImage",
+    "NSGraphics",
+    "NSGraphicsContext",
 ]
 
 [target.'cfg(target_os = "linux")'.dependencies]

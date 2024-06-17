@@ -5,7 +5,7 @@ use objc2::rc::Id;
 use objc2::runtime::AnyObject;
 use objc2::{extern_class, extern_methods, ClassType};
 
-use icrate::Foundation::{CGFloat, NSObject, NSString};
+use objc2_foundation::{CGFloat, NSObject, NSString};
 
 pub type CALayerContentsFilter = NSString;
 

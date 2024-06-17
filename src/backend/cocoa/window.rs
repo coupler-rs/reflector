@@ -12,8 +12,11 @@ use objc2::{ClassType, Message, RefEncode};
 
 use objc_sys::{objc_class, objc_disposeClassPair};
 
-use icrate::AppKit::{NSCursor, NSEvent, NSScreen, NSTrackingArea, NSView, NSWindow};
-use icrate::Foundation::{NSInteger, NSPoint, NSRect, NSSize, NSString};
+use objc2_app_kit::{
+    NSBackingStoreType, NSCursor, NSEvent, NSScreen, NSTrackingArea, NSTrackingAreaOptions, NSView,
+    NSWindow, NSWindowStyleMask,
+};
+use objc2_foundation::{NSInteger, NSPoint, NSRect, NSSize, NSString};
 
 use super::app::{AppInner, AppState};
 use super::surface::Surface;
@@ -452,12 +455,12 @@ impl WindowInner {
 
             state.view.replace(Some(view.retain()));
 
-            let tracking_options = icrate::AppKit::NSTrackingMouseEnteredAndExited
-                | icrate::AppKit::NSTrackingMouseMoved
-                | icrate::AppKit::NSTrackingCursorUpdate
-                | icrate::AppKit::NSTrackingActiveAlways
-                | icrate::AppKit::NSTrackingInVisibleRect
-                | icrate::AppKit::NSTrackingEnabledDuringMouseDrag;
+            let tracking_options = NSTrackingAreaOptions::NSTrackingMouseEnteredAndExited
+                | NSTrackingAreaOptions::NSTrackingMouseMoved
+                | NSTrackingAreaOptions::NSTrackingCursorUpdate
+                | NSTrackingAreaOptions::NSTrackingActiveAlways
+                | NSTrackingAreaOptions::NSTrackingInVisibleRect
+                | NSTrackingAreaOptions::NSTrackingEnabledDuringMouseDrag;
 
             unsafe {
                 let tracking_area = NSTrackingArea::initWithRect_options_owner_userInfo(
@@ -482,17 +485,17 @@ impl WindowInner {
                     NSSize::new(options.size.width, options.size.height),
                 );
 
-                let style_mask = icrate::AppKit::NSWindowStyleMaskTitled
-                    | icrate::AppKit::NSWindowStyleMaskClosable
-                    | icrate::AppKit::NSWindowStyleMaskMiniaturizable
-                    | icrate::AppKit::NSWindowStyleMaskResizable;
+                let style_mask = NSWindowStyleMask::Titled
+                    | NSWindowStyleMask::Closable
+                    | NSWindowStyleMask::Miniaturizable
+                    | NSWindowStyleMask::Resizable;
 
                 let window = unsafe {
                     NSWindow::initWithContentRect_styleMask_backing_defer(
                         app_state.mtm.alloc::<NSWindow>(),
                         content_rect,
                         style_mask,
-                        icrate::AppKit::NSBackingStoreBuffered,
+                        NSBackingStoreType::NSBackingStoreBuffered,
                         false,
                     )
                 };

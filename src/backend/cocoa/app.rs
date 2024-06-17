@@ -9,8 +9,11 @@ use objc2::rc::{autoreleasepool, Id};
 use objc2::runtime::AnyClass;
 use objc2::ClassType;
 
-use icrate::AppKit::{self, NSApplication, NSCursor, NSEvent, NSImage};
-use icrate::Foundation::{MainThreadMarker, NSPoint, NSSize};
+use objc2_app_kit::{
+    self, NSApplication, NSApplicationActivationPolicy, NSCursor, NSEvent, NSEventModifierFlags,
+    NSEventType, NSImage,
+};
+use objc2_foundation::{MainThreadMarker, NSPoint, NSSize};
 
 use super::display_links::DisplayLinks;
 use super::timer::{TimerInner, Timers};
@@ -61,9 +64,9 @@ impl AppState {
                 // Post an NSEvent to ensure that the call to [NSApplication stop] takes effect
                 // immediately, in case we're inside a CFRunLoopTimer or CFRunLoopSource callback.
                 NSEvent::otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2(
-                    AppKit::NSEventTypeApplicationDefined,
+                    NSEventType::ApplicationDefined,
                     NSPoint::new(0.0, 0.0),
-                    0,
+                    NSEventModifierFlags::empty(),
                     0.0,
                     0,
                     None,
@@ -135,7 +138,7 @@ impl AppInner {
 
             if options.mode == AppMode::Owner {
                 let app = NSApplication::sharedApplication(mtm);
-                app.setActivationPolicy(AppKit::NSApplicationActivationPolicyRegular);
+                app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
                 #[allow(deprecated)]
                 app.activateIgnoringOtherApps(true);
             }

@@ -6,8 +6,8 @@ use std::rc::Rc;
 
 use objc2::rc::Id;
 
-use icrate::AppKit::NSScreen;
-use icrate::Foundation::{ns_string, NSNumber};
+use objc2_app_kit::NSScreen;
+use objc2_foundation::{ns_string, NSNumber};
 
 use core_foundation::base::{CFRelease, CFTypeRef};
 use core_foundation::runloop::*;
