@@ -430,11 +430,7 @@ impl WindowInner {
                 None
             };
 
-            let origin = if options.parent.is_some() {
-                Point::new(0.0, 0.0)
-            } else {
-                options.position.unwrap_or(Point::new(0.0, 0.0))
-            };
+            let origin = options.position.unwrap_or(Point::new(0.0, 0.0));
             let frame = NSRect::new(
                 NSPoint::new(origin.x, origin.y),
                 NSSize::new(options.size.width, options.size.height),
