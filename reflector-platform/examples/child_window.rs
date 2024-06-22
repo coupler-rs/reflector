@@ -1,4 +1,6 @@
-use portlight::{App, AppMode, AppOptions, Bitmap, Event, Point, Response, Size, WindowOptions};
+use reflector_platform::{
+    App, AppMode, AppOptions, Bitmap, Event, Point, Response, Size, WindowOptions,
+};
 
 fn main() {
     let parent_app = App::new().unwrap();

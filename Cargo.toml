@@ -1,60 +1,14 @@
 [package]
-name = "portlight"
+name = "reflector"
 version = "0.1.0"
 authors = ["Micah Johnston <micah@photophore.systems>"]
 edition = "2021"
 publish = false
 
 [dependencies]
+reflector-platform = { path = "reflector-platform" }
 
-
-[target.'cfg(target_os = "windows")'.dependencies]
-getrandom = "0.2.10"
-
-[target.'cfg(target_os = "windows")'.dependencies.windows]
-version = "0.51.1"
-features = [
-    "Win32_Foundation",
-    "Win32_UI_WindowsAndMessaging",
-    "Win32_UI_Input_KeyboardAndMouse",
-    "Win32_UI_HiDpi",
-    "Win32_Graphics_Gdi",
-    "Win32_Graphics_Dxgi",
-    "Win32_Graphics_Dxgi_Common",
-    "Win32_System_LibraryLoader",
-    "Win32_System_SystemServices",
+[workspace]
+members = [
+    "reflector-platform",
 ]
-
-[target.'cfg(target_os = "macos")'.dependencies]
-objc2 = { version = "0.5.2", features = ["catch-all"] }
-objc-sys = "0.3.1"
-core-foundation = "0.9.3"
-getrandom = "0.2.10"
-
-[target.'cfg(target_os = "macos")'.dependencies.objc2-foundation]
-version = "0.2.2"
-features = [
-    "NSEnumerator",
-    "NSThread",
-]
-
-[target.'cfg(target_os = "macos")'.dependencies.objc2-app-kit]
-version = "0.2.2"
-features = [
-    "NSApplication",
-    "NSRunningApplication",
-    "NSResponder",
-    "NSView",
-    "NSWindow",
-    "NSScreen",
-    "NSEvent",
-    "NSCursor",
-    "NSTrackingArea",
-    "NSImage",
-    "NSGraphics",
-    "NSGraphicsContext",
-]
-
-[target.'cfg(target_os = "linux")'.dependencies]
-x11rb = { version = "0.12.0", features = ["cursor", "shm", "present"] }
-libc = "0.2"

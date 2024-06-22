@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use portlight::{App, Bitmap, Event, Response, Size, WindowContext, WindowOptions};
+use reflector_platform::{App, Bitmap, Event, Response, Size, WindowContext, WindowOptions};
 
 const WIDTH: usize = 512;
 const HEIGHT: usize = 512;
