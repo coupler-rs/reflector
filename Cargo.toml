@@ -7,8 +7,11 @@ publish = false
 
 [dependencies]
 reflector-platform = { path = "reflector-platform" }
+reflector-graphics = { path = "reflector-graphics" }
 
 [workspace]
 members = [
     "reflector-platform",
+    "reflector-graphics",
+    "reflector-graphics/svg",
 ]
