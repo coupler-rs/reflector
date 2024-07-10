@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-use flicker::{Color, Font, Renderer, Transform, Vec2};
 use portlight::{
     App, Bitmap, Event, MouseButton, Point, Response, Size, WindowContext, WindowOptions,
 };
+use reflector_graphics::{Color, Font, Renderer, Transform, Vec2};
 
 const WIDTH: usize = 512;
 const HEIGHT: usize = 512;
@@ -160,7 +160,7 @@ fn main() {
     let mut state = State::new(commands);
 
     let window = WindowOptions::new()
-        .title("flicker")
+        .title("svg example")
         .size(Size::new(WIDTH as f64, HEIGHT as f64))
         .open(app.handle(), move |cx, event| state.handle_event(cx, event))
         .unwrap();

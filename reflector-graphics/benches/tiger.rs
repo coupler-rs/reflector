@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use flicker::{Renderer, Transform};
+use reflector_graphics::{Renderer, Transform};
 
 const WIDTH: usize = 1024;
 const HEIGHT: usize = 1024;

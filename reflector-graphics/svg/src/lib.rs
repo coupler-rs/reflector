@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::path;
 
-use flicker::{Color, Mat2x2, Path, RenderContext, Transform, Vec2};
+use reflector_graphics::{Color, Mat2x2, Path, RenderContext, Transform, Vec2};
 
 pub enum Style {
     Fill,

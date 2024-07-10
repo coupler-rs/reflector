@@ -1,23 +1,15 @@
 [package]
-name = "flicker"
+name = "reflector"
 version = "0.1.0"
-authors = ["Micah Johnston <micah@glowcoil.com>"]
+authors = ["Micah Johnston <micah@photophore.systems>"]
 edition = "2021"
 publish = false
 
 [dependencies]
-rustybuzz = "0.11.0"
-
-[dev-dependencies]
-svg = { path = "svg" }
-criterion = { version = "0.3", features = ["html_reports"] }
-portlight = { git = "https://github.com/coupler-rs/portlight", rev = "abd457c4c2b961b1eed19ef6107e4b503659dcd4" }
-
-[[bench]]
-name = "tiger"
-harness = false
+reflector-graphics = { path = "reflector-graphics" }
 
 [workspace]
 members = [
-    "svg"
+    "reflector-graphics",
+    "reflector-graphics/svg",
 ]
