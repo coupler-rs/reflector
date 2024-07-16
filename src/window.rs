@@ -1,4 +1,56 @@
-use crate::{App, Point, Result, Size};
+use graphics::Renderer;
+use platform::{Bitmap, WindowContext};
+
+use crate::{App, Constraints, Context, Elem, Point, Result, Size};
+
+struct Handler<E> {
+    renderer: Renderer,
+    framebuffer: Vec<u32>,
+    root: E,
+}
+
+impl<E: Elem> Handler<E> {
+    fn new(root: E) -> Handler<E> {
+        Handler {
+            renderer: Renderer::new(),
+            framebuffer: Vec::new(),
+            root,
+        }
+    }
+
+    fn handle(&mut self, cx: &WindowContext, event: platform::Event) -> platform::Response {
+        match event {
+            platform::Event::Frame => {
+                let scale = cx.window().scale();
+                let size = cx.window().size();
+
+                self.root.update(&mut Context {});
+
+                let constraints = Constraints {
+                    min: size,
+                    max: size,
+                };
+                self.root.layout(&mut Context {}, constraints);
+
+                let width = (scale * size.width) as usize;
+                let height = (scale * size.height) as usize;
+                self.framebuffer.resize(width * height, 0xFF000000);
+
+                let mut canvas = self.renderer.canvas(&mut self.framebuffer, width, height);
+                self.root.render(&mut Context {}, &mut canvas);
+
+                cx.window().present(Bitmap::new(&self.framebuffer, width, height));
+            }
+            platform::Event::Close => {
+                cx.window().close();
+                cx.app().exit();
+            }
+            _ => {}
+        }
+
+        platform::Response::Ignore
+    }
+}
 
 #[derive(Default)]
 pub struct WindowOptions {
@@ -25,8 +77,12 @@ impl WindowOptions {
         self
     }
 
-    pub fn open(&self, app: &App) -> Result<Window> {
-        let window = self.inner.open(app.inner.handle(), |_, _| platform::Response::Ignore)?;
+    pub fn open<E: Elem + 'static>(&self, app: &App, root: E) -> Result<Window> {
+        let mut handler = Handler::new(root);
+
+        let window = self.inner.open(app.inner.handle(), move |cx, event| {
+            handler.handle(cx, event)
+        })?;
 
         window.show();
 
