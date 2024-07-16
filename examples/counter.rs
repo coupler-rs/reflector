@@ -1,6 +1,18 @@
 use reflector::{
-    App, Canvas, Color, Constraints, Context, Elem, Event, Response, Size, WindowOptions,
+    App, Build, Canvas, Color, Constraints, Context, Elem, Event, Response, Size, WindowOptions,
 };
+
+struct Root {}
+
+impl Build for Root {
+    type Result = RootElem;
+
+    fn build(self, _cx: &mut Context) -> RootElem {
+        RootElem {}
+    }
+
+    fn rebuild(self, _cx: &mut Context, _result: &mut RootElem) {}
+}
 
 struct RootElem {}
 
@@ -26,7 +38,7 @@ fn main() {
     WindowOptions::new()
         .title("window")
         .size(Size::new(512.0, 512.0))
-        .open(&app, RootElem {})
+        .open(&app, Root {})
         .unwrap();
 
     app.run().unwrap();

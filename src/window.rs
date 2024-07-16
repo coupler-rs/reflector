@@ -1,7 +1,7 @@
 use graphics::Renderer;
 use platform::{Bitmap, WindowContext};
 
-use crate::{App, Constraints, Context, Elem, Point, Result, Size};
+use crate::{App, Build, Constraints, Context, Elem, Point, Result, Size};
 
 struct Handler<E> {
     renderer: Renderer,
@@ -77,8 +77,12 @@ impl WindowOptions {
         self
     }
 
-    pub fn open<E: Elem + 'static>(&self, app: &App, root: E) -> Result<Window> {
-        let mut handler = Handler::new(root);
+    pub fn open<B>(&self, app: &App, root: B) -> Result<Window>
+    where
+        B: Build,
+        B::Result: Elem + 'static,
+    {
+        let mut handler = Handler::new(root.build(&mut Context {}));
 
         let window = self.inner.open(app.inner.handle(), move |cx, event| {
             handler.handle(cx, event)

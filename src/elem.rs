@@ -16,6 +16,13 @@ pub enum Response {
     Ignore,
 }
 
+pub trait Build {
+    type Result;
+
+    fn build(self, cx: &mut Context) -> Self::Result;
+    fn rebuild(self, cx: &mut Context, result: &mut Self::Result);
+}
+
 pub trait Elem {
     fn update(&mut self, cx: &mut Context);
     fn event(&mut self, cx: &mut Context, event: Event) -> Response;

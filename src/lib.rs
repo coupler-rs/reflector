@@ -12,6 +12,6 @@ mod error;
 mod window;
 
 pub use app::App;
-pub use elem::{Constraints, Context, Elem, Event, Response};
+pub use elem::{Build, Constraints, Context, Elem, Event, Response};
 pub use error::{Error, Result};
 pub use window::{Window, WindowOptions};
