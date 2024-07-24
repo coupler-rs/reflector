@@ -1,4 +1,4 @@
-use graphics::{Color, Renderer};
+use graphics::{Affine, Color, Renderer};
 use platform::{Bitmap, WindowContext};
 
 use crate::{App, Build, Constraints, Context, Elem, Point, Result, Size};
@@ -38,7 +38,10 @@ impl<E: Elem> Handler<E> {
 
                 let mut canvas = self.renderer.canvas(&mut self.framebuffer, width, height);
                 canvas.clear(Color::rgba(255, 255, 255, 255));
-                self.root.render(&mut Context {}, &mut canvas);
+
+                canvas.with_transform(Affine::scale(scale as f32), |canvas| {
+                    self.root.render(&mut Context {}, canvas);
+                });
 
                 cx.window().present(Bitmap::new(&self.framebuffer, width, height));
             }
