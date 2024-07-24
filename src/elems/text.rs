@@ -65,7 +65,7 @@ impl Elem for TextElem {
             self.layout.glyphs(),
             &self.font,
             self.size,
-            &Affine::id(),
+            Affine::id(),
             Color::rgba(0, 0, 0, 255),
         );
     }
