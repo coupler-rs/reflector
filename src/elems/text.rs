@@ -1,4 +1,4 @@
-use graphics::{Canvas, Color, Font, TextLayout, Transform};
+use graphics::{Affine, Canvas, Color, Font, TextLayout};
 
 use crate::{Build, Constraints, Context, Elem, Event, Response, Size};
 
@@ -65,7 +65,7 @@ impl Elem for TextElem {
             self.layout.glyphs(),
             &self.font,
             self.size,
-            &Transform::id(),
+            &Affine::id(),
             Color::rgba(0, 0, 0, 255),
         );
     }
