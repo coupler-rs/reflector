@@ -21,9 +21,9 @@ impl<T> Build for Text<T>
 where
     T: AsRef<str>,
 {
-    type Result = TextElem;
+    type Elem = TextElem;
 
-    fn build(self, _cx: &mut Context) -> Self::Result {
+    fn build(self, _cx: &mut Context) -> Self::Elem {
         TextElem {
             text: self.text.as_ref().to_owned(),
             font: self.font,
@@ -32,11 +32,11 @@ where
         }
     }
 
-    fn rebuild(self, _cx: &mut Context, result: &mut Self::Result) {
-        result.text.clear();
-        result.text.push_str(self.text.as_ref());
-        result.font = self.font;
-        result.size = self.size;
+    fn rebuild(self, _cx: &mut Context, elem: &mut Self::Elem) {
+        elem.text.clear();
+        elem.text.push_str(self.text.as_ref());
+        elem.font = self.font;
+        elem.size = self.size;
     }
 }
 

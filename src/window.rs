@@ -84,7 +84,7 @@ impl WindowOptions {
     pub fn open<B>(&self, app: &App, root: B) -> Result<Window>
     where
         B: Build,
-        B::Result: Elem + 'static,
+        B::Elem: 'static,
     {
         let mut handler = Handler::new(root.build(&mut Context {}));
 

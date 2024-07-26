@@ -17,10 +17,10 @@ pub enum Response {
 }
 
 pub trait Build {
-    type Result;
+    type Elem: Elem;
 
-    fn build(self, cx: &mut Context) -> Self::Result;
-    fn rebuild(self, cx: &mut Context, result: &mut Self::Result);
+    fn build(self, cx: &mut Context) -> Self::Elem;
+    fn rebuild(self, cx: &mut Context, elem: &mut Self::Elem);
 }
 
 pub trait Elem {
