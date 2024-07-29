@@ -13,6 +13,6 @@ mod window;
 pub mod elems;
 
 pub use app::App;
-pub use elem::{Build, Constraints, Context, Elem, Event, Response};
+pub use elem::{Build, Child, Constraints, Context, Elem, Event, Response};
 pub use error::{Error, Result};
 pub use window::{Window, WindowOptions};
