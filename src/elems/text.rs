@@ -1,6 +1,6 @@
 use graphics::{Affine, Canvas, Color, Font, TextLayout};
 
-use crate::{Build, Constraints, Context, Elem, Event, Response, Size};
+use crate::{Build, Context, Elem, Event, ProposedSize, Response, Size};
 
 pub struct Text<T> {
     text: T,
@@ -54,10 +54,13 @@ impl Elem for TextElem {
         Response::Ignore
     }
 
-    fn layout(&mut self, _cx: &mut Context, constraints: Constraints) -> Size {
+    fn layout(&mut self, _cx: &mut Context, proposal: ProposedSize) -> Size {
         self.layout = TextLayout::new(&self.text, &self.font, self.size);
 
-        constraints.min
+        Size::new(
+            proposal.width.unwrap_or(0.0),
+            proposal.height.unwrap_or(0.0),
+        )
     }
 
     fn render(&mut self, _cx: &mut Context, canvas: &mut Canvas) {

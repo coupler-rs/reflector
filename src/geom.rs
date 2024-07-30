@@ -11,3 +11,9 @@ impl Size {
         Size { width, height }
     }
 }
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct ProposedSize {
+    pub width: Option<f32>,
+    pub height: Option<f32>,
+}

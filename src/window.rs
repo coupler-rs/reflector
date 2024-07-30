@@ -1,7 +1,7 @@
 use graphics::{Affine, Color, Renderer};
 use platform::{Bitmap, WindowContext};
 
-use crate::{App, Build, Constraints, Context, Elem, Point, Result, Size};
+use crate::{App, Build, Context, Elem, Point, ProposedSize, Result, Size};
 
 struct Handler<E> {
     renderer: Renderer,
@@ -27,11 +27,11 @@ impl<E: Elem> Handler<E> {
 
                 self.root.update(&mut Context {});
 
-                let constraints = Constraints {
-                    min: size,
-                    max: size,
+                let proposal = ProposedSize {
+                    width: Some(size.width),
+                    height: Some(size.height),
                 };
-                self.root.layout(&mut Context {}, constraints);
+                self.root.layout(&mut Context {}, proposal);
 
                 let width = (scale * size.width) as usize;
                 let height = (scale * size.height) as usize;

@@ -1,13 +1,8 @@
 use graphics::Canvas;
 
-use crate::Size;
+use crate::{ProposedSize, Size};
 
 pub struct Context {}
-
-pub struct Constraints {
-    pub min: Size,
-    pub max: Size,
-}
 
 pub enum Event {}
 
@@ -26,7 +21,7 @@ pub trait Build {
 pub trait Elem {
     fn update(&mut self, cx: &mut Context);
     fn event(&mut self, cx: &mut Context, event: Event) -> Response;
-    fn layout(&mut self, cx: &mut Context, constraints: Constraints) -> Size;
+    fn layout(&mut self, cx: &mut Context, proposal: ProposedSize) -> Size;
     fn render(&mut self, cx: &mut Context, canvas: &mut Canvas);
 }
 
@@ -54,8 +49,8 @@ impl<E: Elem> Child<E> {
         self.elem.event(cx, event)
     }
 
-    pub fn layout(&mut self, cx: &mut Context, constraints: Constraints) -> Size {
-        self.elem.layout(cx, constraints)
+    pub fn layout(&mut self, cx: &mut Context, proposal: ProposedSize) -> Size {
+        self.elem.layout(cx, proposal)
     }
 
     pub fn render(&mut self, cx: &mut Context, canvas: &mut Canvas) {
