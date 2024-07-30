@@ -1,4 +1,4 @@
-use reflector::elems::Text;
+use reflector::elems::{Padding, Text};
 use reflector::graphics::Font;
 use reflector::{App, Size, WindowOptions};
 
@@ -14,7 +14,7 @@ fn main() {
     WindowOptions::new()
         .title("window")
         .size(Size::new(512.0, 512.0))
-        .open(&app, Text::new("text", font, 16.0))
+        .open(&app, Padding::new(5.0, Text::new("text", font, 16.0)))
         .unwrap();
 
     app.run().unwrap();
