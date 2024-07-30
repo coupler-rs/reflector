@@ -21,8 +21,9 @@ impl<E: Elem> Handler<E> {
     fn handle(&mut self, cx: &WindowContext, event: platform::Event) -> platform::Response {
         match event {
             platform::Event::Frame => {
-                let scale = cx.window().scale();
+                let scale = cx.window().scale() as f32;
                 let size = cx.window().size();
+                let size = Size::new(size.width as f32, size.height as f32);
 
                 self.root.update(&mut Context {});
 
@@ -72,12 +73,12 @@ impl WindowOptions {
     }
 
     pub fn position(&mut self, position: Point) -> &mut Self {
-        self.inner.position(position);
+        self.inner.position(platform::Point::new(position.x as f64, position.y as f64));
         self
     }
 
     pub fn size(&mut self, size: Size) -> &mut Self {
-        self.inner.size(size);
+        self.inner.size(platform::Size::new(size.width as f64, size.height as f64));
         self
     }
 
