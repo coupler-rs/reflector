@@ -54,10 +54,10 @@ impl Elem for TextElem {
         Response::Ignore
     }
 
-    fn layout(&mut self, _cx: &mut Context, proposal: ProposedSize) -> Size {
+    fn layout(&mut self, _cx: &mut Context, _proposal: ProposedSize) -> Size {
         self.layout = TextLayout::new(&self.text, &self.font, self.size);
 
-        proposal.unwrap_or(Size::new(0.0, 0.0))
+        Size::new(self.layout.width(), self.layout.height())
     }
 
     fn render(&mut self, _cx: &mut Context, canvas: &mut Canvas) {
