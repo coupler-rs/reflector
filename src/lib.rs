@@ -12,7 +12,7 @@ mod window;
 pub mod elems;
 
 pub use app::App;
-pub use elem::{Build, Child, Context, Elem, Event, Response};
+pub use elem::{Build, Context, Elem, Event, Response};
 pub use error::{Error, Result};
 pub use geom::{Point, ProposedSize, Size};
 pub use window::{Window, WindowOptions};
