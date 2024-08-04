@@ -53,7 +53,7 @@ pub struct TextElem {
 impl Elem for TextElem {
     fn update(&mut self, _cx: &mut Context) {}
 
-    fn event(&mut self, _cx: &mut Context, _event: Event) -> Response {
+    fn handle(&mut self, _cx: &mut Context, _event: Event) -> Response {
         Response::Ignore
     }
 
