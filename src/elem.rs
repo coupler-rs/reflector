@@ -21,6 +21,7 @@ pub trait Build {
 pub trait Elem {
     fn update(&mut self, cx: &mut Context);
     fn event(&mut self, cx: &mut Context, event: Event) -> Response;
-    fn layout(&mut self, cx: &mut Context, proposal: ProposedSize) -> Size;
+    fn measure(&mut self, cx: &mut Context, proposal: ProposedSize) -> Size;
+    fn place(&mut self, cx: &mut Context, size: Size);
     fn render(&mut self, cx: &mut Context, canvas: &mut Canvas);
 }

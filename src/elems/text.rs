@@ -24,11 +24,14 @@ where
     type Elem = TextElem;
 
     fn build(self, _cx: &mut Context) -> Self::Elem {
+        let text = self.text.as_ref().to_owned();
+        let layout = TextLayout::new(&text, &self.font, self.size);
+
         TextElem {
-            text: self.text.as_ref().to_owned(),
+            text,
             font: self.font,
             size: self.size,
-            layout: TextLayout::empty(),
+            layout,
         }
     }
 
@@ -54,11 +57,11 @@ impl Elem for TextElem {
         Response::Ignore
     }
 
-    fn layout(&mut self, _cx: &mut Context, _proposal: ProposedSize) -> Size {
-        self.layout = TextLayout::new(&self.text, &self.font, self.size);
-
+    fn measure(&mut self, _cx: &mut Context, _proposal: ProposedSize) -> Size {
         Size::new(self.layout.width(), self.layout.height())
     }
+
+    fn place(&mut self, _cx: &mut Context, _size: Size) {}
 
     fn render(&mut self, _cx: &mut Context, canvas: &mut Canvas) {
         canvas.fill_glyphs(

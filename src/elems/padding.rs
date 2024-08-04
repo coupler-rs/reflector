@@ -59,10 +59,14 @@ impl<E: Elem> Elem for PaddingElem<E> {
         self.child.event(cx, event)
     }
 
-    fn layout(&mut self, cx: &mut Context, proposal: ProposedSize) -> Size {
+    fn measure(&mut self, cx: &mut Context, proposal: ProposedSize) -> Size {
         let proposal = proposal.shrink(2.0 * self.padding_x, 2.0 * self.padding_y);
-        let size = self.child.layout(cx, proposal);
+        let size = self.child.measure(cx, proposal);
         size.grow(2.0 * self.padding_x, 2.0 * self.padding_y)
+    }
+
+    fn place(&mut self, cx: &mut Context, size: Size) {
+        self.child.place(cx, size.shrink(2.0 * self.padding_x, 2.0 * self.padding_y));
     }
 
     fn render(&mut self, cx: &mut Context, canvas: &mut Canvas) {
