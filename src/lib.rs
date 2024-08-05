@@ -10,6 +10,7 @@ mod geom;
 mod window;
 
 pub mod elems;
+pub mod list;
 
 pub use app::App;
 pub use elem::{Build, Context, Elem, Event, Response};
