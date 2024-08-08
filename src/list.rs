@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use crate::Context;
 
 pub trait BuildList<B> {
@@ -15,7 +17,21 @@ pub trait BuildItem<T> {
 }
 
 pub trait List<T: ?Sized> {
-    fn for_each<F: FnMut(&mut T)>(&mut self, f: F);
+    fn for_each<F>(&mut self, f: F)
+    where
+        F: FnMut(&mut T);
+
+    fn try_for_each<F, B>(&mut self, f: F) -> ControlFlow<B>
+    where
+        F: FnMut(&mut T) -> ControlFlow<B>;
+
+    fn for_each_rev<F>(&mut self, f: F)
+    where
+        F: FnMut(&mut T);
+
+    fn try_for_each_rev<F, B>(&mut self, f: F) -> ControlFlow<B>
+    where
+        F: FnMut(&mut T) -> ControlFlow<B>;
 }
 
 pub struct Empty;
@@ -31,7 +47,31 @@ impl<B> BuildList<B> for Empty {
 }
 
 impl<T: ?Sized> List<T> for Empty {
-    fn for_each<F: FnMut(&mut T)>(&mut self, _f: F) {}
+    fn for_each<F>(&mut self, _f: F)
+    where
+        F: FnMut(&mut T),
+    {
+    }
+
+    fn try_for_each<F, B>(&mut self, _f: F) -> ControlFlow<B>
+    where
+        F: FnMut(&mut T) -> ControlFlow<B>,
+    {
+        ControlFlow::Continue(())
+    }
+
+    fn for_each_rev<F>(&mut self, _f: F)
+    where
+        F: FnMut(&mut T),
+    {
+    }
+
+    fn try_for_each_rev<F, B>(&mut self, _f: F) -> ControlFlow<B>
+    where
+        F: FnMut(&mut T) -> ControlFlow<B>,
+    {
+        ControlFlow::Continue(())
+    }
 }
 
 pub struct Append<H, T>(pub H, pub T);
@@ -61,9 +101,40 @@ where
     H: List<T>,
     U: AsMut<T>,
 {
-    fn for_each<F: FnMut(&mut T)>(&mut self, mut f: F) {
+    fn for_each<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut T),
+    {
         self.0.for_each(|x| f(x));
         f(self.1.as_mut());
+    }
+
+    fn try_for_each<F, B>(&mut self, mut f: F) -> ControlFlow<B>
+    where
+        F: FnMut(&mut T) -> ControlFlow<B>,
+    {
+        self.0.try_for_each(|x| f(x))?;
+        f(self.1.as_mut())?;
+
+        ControlFlow::Continue(())
+    }
+
+    fn for_each_rev<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut T),
+    {
+        f(self.1.as_mut());
+        self.0.for_each_rev(|x| f(x));
+    }
+
+    fn try_for_each_rev<F, B>(&mut self, mut f: F) -> ControlFlow<B>
+    where
+        F: FnMut(&mut T) -> ControlFlow<B>,
+    {
+        f(self.1.as_mut())?;
+        self.0.try_for_each_rev(|x| f(x))?;
+
+        ControlFlow::Continue(())
     }
 }
 
@@ -94,8 +165,39 @@ where
     L: List<T>,
     M: List<T>,
 {
-    fn for_each<F: FnMut(&mut T)>(&mut self, mut f: F) {
+    fn for_each<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut T),
+    {
         self.0.for_each(|x| f(x));
         self.1.for_each(|x| f(x));
+    }
+
+    fn try_for_each<F, B>(&mut self, mut f: F) -> ControlFlow<B>
+    where
+        F: FnMut(&mut T) -> ControlFlow<B>,
+    {
+        self.0.try_for_each(|x| f(x))?;
+        self.1.try_for_each(|x| f(x))?;
+
+        ControlFlow::Continue(())
+    }
+
+    fn for_each_rev<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut T),
+    {
+        self.1.for_each(|x| f(x));
+        self.0.for_each(|x| f(x));
+    }
+
+    fn try_for_each_rev<F, B>(&mut self, mut f: F) -> ControlFlow<B>
+    where
+        F: FnMut(&mut T) -> ControlFlow<B>,
+    {
+        self.1.try_for_each(|x| f(x))?;
+        self.0.try_for_each(|x| f(x))?;
+
+        ControlFlow::Continue(())
     }
 }
