@@ -14,12 +14,8 @@ pub trait BuildItem<T> {
     fn rebuild_item(&mut self, cx: &mut Context, value: T, item: &mut Self::Item);
 }
 
-pub trait ForEach<V> {
-    fn for_each(&mut self, cx: &mut Context, visitor: &mut V);
-}
-
-pub trait Visit<T> {
-    fn visit(&mut self, cx: &mut Context, value: &mut T);
+pub trait List<T: ?Sized> {
+    fn for_each<F: FnMut(&mut T)>(&mut self, f: F);
 }
 
 pub struct Empty;
@@ -34,8 +30,8 @@ impl<B> BuildList<B> for Empty {
     fn rebuild_list(self, _cx: &mut Context, _builder: &mut B, _list: &mut Self::List) {}
 }
 
-impl<V> ForEach<V> for Empty {
-    fn for_each(&mut self, _cx: &mut Context, _visitor: &mut V) {}
+impl<T: ?Sized> List<T> for Empty {
+    fn for_each<F: FnMut(&mut T)>(&mut self, _f: F) {}
 }
 
 pub struct Append<H, T>(pub H, pub T);
@@ -60,14 +56,14 @@ where
     }
 }
 
-impl<H, T, V> ForEach<V> for Append<H, T>
+impl<H, U, T: ?Sized> List<T> for Append<H, U>
 where
-    H: ForEach<V>,
-    V: Visit<T>,
+    H: List<T>,
+    U: AsMut<T>,
 {
-    fn for_each(&mut self, cx: &mut Context, visitor: &mut V) {
-        self.0.for_each(cx, visitor);
-        visitor.visit(cx, &mut self.1);
+    fn for_each<F: FnMut(&mut T)>(&mut self, mut f: F) {
+        self.0.for_each(|x| f(x));
+        f(self.1.as_mut());
     }
 }
 
@@ -93,13 +89,13 @@ where
     }
 }
 
-impl<A, B, V> ForEach<V> for Concat<A, B>
+impl<L, M, T: ?Sized> List<T> for Concat<L, M>
 where
-    A: ForEach<V>,
-    B: ForEach<V>,
+    L: List<T>,
+    M: List<T>,
 {
-    fn for_each(&mut self, cx: &mut Context, visitor: &mut V) {
-        self.0.for_each(cx, visitor);
-        self.1.for_each(cx, visitor);
+    fn for_each<F: FnMut(&mut T)>(&mut self, mut f: F) {
+        self.0.for_each(|x| f(x));
+        self.1.for_each(|x| f(x));
     }
 }
