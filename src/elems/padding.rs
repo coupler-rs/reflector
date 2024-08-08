@@ -55,7 +55,7 @@ impl<E: Elem> Elem for PaddingElem<E> {
         self.child.update(cx);
     }
 
-    fn handle(&mut self, cx: &mut Context, event: Event) -> Response {
+    fn handle(&mut self, cx: &mut Context, event: &Event) -> Response {
         self.child.handle(cx, event)
     }
 
