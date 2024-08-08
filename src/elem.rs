@@ -7,6 +7,7 @@ pub struct Context {}
 #[derive(Clone)]
 pub enum Event {}
 
+#[derive(PartialEq, Eq)]
 pub enum Response {
     Capture,
     Ignore,
