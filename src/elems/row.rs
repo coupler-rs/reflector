@@ -5,24 +5,35 @@ use crate::list::{Append, BuildItem, BuildList, Concat, Empty, List};
 use crate::{Build, Context, Elem, Event, ProposedSize, Response, Size};
 
 pub struct Row<L> {
+    spacing: f32,
     children: L,
 }
 
 impl Row<Empty> {
-    pub fn new() -> Row<Empty> {
-        Row { children: Empty }
+    pub fn new(spacing: f32) -> Row<Empty> {
+        Row {
+            spacing,
+            children: Empty,
+        }
     }
 }
 
 impl<L> Row<L> {
+    pub fn spacing(mut self, spacing: f32) -> Row<L> {
+        self.spacing = spacing;
+        self
+    }
+
     pub fn child<E: Build>(self, child: E) -> Row<Append<L, E>> {
         Row {
+            spacing: self.spacing,
             children: Append(self.children, child),
         }
     }
 
     pub fn children<M: BuildList<RowBuilder>>(self, children: M) -> Row<Concat<L, M>> {
         Row {
+            spacing: self.spacing,
             children: Concat(self.children, children),
         }
     }
@@ -60,11 +71,13 @@ where
 
     fn build(self, cx: &mut Context) -> Self::Elem {
         RowElem {
+            spacing: self.spacing,
             children: self.children.build_list(cx, &mut RowBuilder),
         }
     }
 
     fn rebuild(self, cx: &mut Context, elem: &mut Self::Elem) {
+        elem.spacing = self.spacing;
         self.children.rebuild_list(cx, &mut RowBuilder, &mut elem.children);
     }
 }
@@ -75,6 +88,7 @@ pub struct RowItem<E: ?Sized> {
 }
 
 pub struct RowElem<L> {
+    spacing: f32,
     children: L,
 }
 
@@ -111,9 +125,11 @@ where
         self.children.for_each(|child| {
             let child_size = child.elem.measure(cx, proposal);
 
-            size.width += child_size.width;
+            size.width += child_size.width + self.spacing;
             size.height = size.height.max(child_size.height);
         });
+
+        size.width -= self.spacing;
 
         size
     }
@@ -128,7 +144,7 @@ where
 
             child.offset = offset;
 
-            offset += child_size.width;
+            offset += child_size.width + self.spacing;
         });
     }
 
