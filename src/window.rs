@@ -26,8 +26,8 @@ impl<E: Elem> Handler<E> {
                 let size = Size::new(size.width as f32, size.height as f32);
 
                 self.root.update(&mut Context {});
-                let size = self.root.measure(&mut Context {}, ProposedSize::from(size));
-                self.root.place(&mut Context {}, size);
+                let root_size = self.root.measure(&mut Context {}, ProposedSize::from(size));
+                self.root.place(&mut Context {}, root_size);
 
                 let width = (scale * size.width) as usize;
                 let height = (scale * size.height) as usize;
