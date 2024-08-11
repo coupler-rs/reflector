@@ -1,11 +1,17 @@
 use graphics::Canvas;
+pub use platform::MouseButton;
 
-use crate::{ProposedSize, Size};
+use crate::{Point, ProposedSize, Size};
 
 pub struct Context {}
 
 #[derive(Clone)]
-pub enum Event {}
+pub enum Event {
+    MouseMove(Point),
+    MouseDown(MouseButton),
+    MouseUp(MouseButton),
+    Scroll(Point),
+}
 
 #[derive(PartialEq, Eq)]
 pub enum Response {

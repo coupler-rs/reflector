@@ -1,7 +1,7 @@
 use graphics::{Affine, Color, Renderer};
 use platform::{Bitmap, WindowContext};
 
-use crate::{App, Build, Context, Elem, Point, ProposedSize, Result, Size};
+use crate::{App, Build, Context, Elem, Event, Point, ProposedSize, Result, Size};
 
 struct Handler<E> {
     renderer: Renderer,
@@ -45,6 +45,20 @@ impl<E: Elem> Handler<E> {
             platform::Event::Close => {
                 cx.window().close();
                 cx.app().exit();
+            }
+            platform::Event::MouseMove(pos) => {
+                let pos = Point::new(pos.x as f32, pos.y as f32);
+                self.root.handle(&mut Context {}, &Event::MouseMove(pos));
+            }
+            platform::Event::MouseDown(button) => {
+                self.root.handle(&mut Context {}, &Event::MouseDown(button));
+            }
+            platform::Event::MouseUp(button) => {
+                self.root.handle(&mut Context {}, &Event::MouseUp(button));
+            }
+            platform::Event::Scroll(delta) => {
+                let delta = Point::new(delta.x as f32, delta.y as f32);
+                self.root.handle(&mut Context {}, &Event::Scroll(delta));
             }
             _ => {}
         }
