@@ -28,6 +28,7 @@ pub trait Build {
 
 pub trait Elem {
     fn update(&mut self, cx: &mut Context);
+    fn hit_test(&mut self, cx: &mut Context, point: Point) -> bool;
     fn handle(&mut self, cx: &mut Context, event: &Event) -> Response;
     fn measure(&mut self, cx: &mut Context, proposal: ProposedSize) -> Size;
     fn place(&mut self, cx: &mut Context, size: Size);

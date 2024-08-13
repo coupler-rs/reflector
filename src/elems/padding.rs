@@ -1,6 +1,6 @@
 use graphics::{Affine, Canvas};
 
-use crate::{Build, Context, Elem, Event, ProposedSize, Response, Size};
+use crate::{Build, Context, Elem, Event, Point, ProposedSize, Response, Size};
 
 pub struct Padding<E> {
     padding_x: f32,
@@ -53,6 +53,10 @@ pub struct PaddingElem<E> {
 impl<E: Elem> Elem for PaddingElem<E> {
     fn update(&mut self, cx: &mut Context) {
         self.child.update(cx);
+    }
+
+    fn hit_test(&mut self, cx: &mut Context, point: Point) -> bool {
+        self.child.hit_test(cx, point - Point::new(self.padding_x, self.padding_y))
     }
 
     fn handle(&mut self, cx: &mut Context, event: &Event) -> Response {

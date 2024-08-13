@@ -1,6 +1,6 @@
 use graphics::{Affine, Canvas, Color, Font, TextLayout};
 
-use crate::{Build, Context, Elem, Event, ProposedSize, Response, Size};
+use crate::{Build, Context, Elem, Event, ProposedSize, Response, Size, Point};
 
 pub struct Text<T> {
     text: T,
@@ -52,6 +52,13 @@ pub struct TextElem {
 
 impl Elem for TextElem {
     fn update(&mut self, _cx: &mut Context) {}
+
+    fn hit_test(&mut self, _cx: &mut Context, point: Point) -> bool {
+        point.x >= 0.0
+            && point.x < self.layout.width()
+            && point.y >= 0.0
+            && point.y < self.layout.height()
+    }
 
     fn handle(&mut self, _cx: &mut Context, _event: &Event) -> Response {
         Response::Ignore

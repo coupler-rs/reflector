@@ -2,7 +2,7 @@ use std::ops::ControlFlow;
 
 use crate::graphics::{Affine, Canvas};
 use crate::list::{Append, BuildItem, BuildList, Concat, Empty, List};
-use crate::{Build, Context, Elem, Event, ProposedSize, Response, Size};
+use crate::{Build, Context, Elem, Event, ProposedSize, Response, Size, Point};
 
 pub struct Row<L> {
     spacing: f32,
@@ -100,6 +100,18 @@ where
         self.children.for_each(|child| {
             child.elem.update(cx);
         });
+    }
+
+    fn hit_test(&mut self, cx: &mut Context, point: Point) -> bool {
+        let result = self.children.try_for_each_rev(|child| {
+            if child.elem.hit_test(cx, point - Point::new(child.offset, 0.0)) {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        });
+
+        result.is_break()
     }
 
     fn handle(&mut self, cx: &mut Context, event: &Event) -> Response {
