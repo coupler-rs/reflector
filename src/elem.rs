@@ -7,6 +7,8 @@ pub struct Context {}
 
 #[derive(Clone, Debug)]
 pub enum Event {
+    MouseEnter,
+    MouseExit,
     MouseMove(Point),
     MouseDown(MouseButton),
     MouseUp(MouseButton),

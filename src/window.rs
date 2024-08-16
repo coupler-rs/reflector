@@ -6,6 +6,7 @@ use crate::{App, Build, Context, Elem, Event, Point, ProposedSize, Result, Size}
 struct Handler<E> {
     renderer: Renderer,
     framebuffer: Vec<u32>,
+    hover: bool,
     root: E,
 }
 
@@ -14,6 +15,7 @@ impl<E: Elem> Handler<E> {
         Handler {
             renderer: Renderer::new(),
             framebuffer: Vec::new(),
+            hover: false,
             root,
         }
     }
@@ -48,7 +50,19 @@ impl<E: Elem> Handler<E> {
             }
             platform::Event::MouseMove(pos) => {
                 let pos = Point::new(pos.x as f32, pos.y as f32);
-                self.root.handle(&mut Context {}, &Event::MouseMove(pos));
+                if self.root.hit_test(&mut Context {}, pos) {
+                    if !self.hover {
+                        self.hover = true;
+                        self.root.handle(&mut Context {}, &Event::MouseEnter);
+                    }
+
+                    self.root.handle(&mut Context {}, &Event::MouseMove(pos));
+                } else {
+                    if self.hover {
+                        self.hover = false;
+                        self.root.handle(&mut Context {}, &Event::MouseExit);
+                    }
+                }
             }
             platform::Event::MouseDown(button) => {
                 self.root.handle(&mut Context {}, &Event::MouseDown(button));
