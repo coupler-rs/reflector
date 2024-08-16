@@ -2,7 +2,7 @@ use std::ops::ControlFlow;
 
 use crate::graphics::{Affine, Canvas};
 use crate::list::{Append, BuildItem, BuildList, Concat, Empty, List};
-use crate::{Build, Context, Elem, Event, ProposedSize, Response, Size, Point};
+use crate::{Build, Context, Elem, Event, Point, ProposedSize, Response, Size};
 
 pub struct Row<L> {
     spacing: f32,
@@ -53,6 +53,7 @@ impl<E: Build> BuildItem<E> for RowBuilder {
     fn build_item(&mut self, cx: &mut Context, value: E) -> Self::Item {
         RowItem {
             offset: 0.0,
+            hover: false,
             elem: value.build(cx),
         }
     }
@@ -84,6 +85,7 @@ where
 
 pub struct RowItem<E: ?Sized> {
     offset: f32,
+    hover: bool,
     elem: E,
 }
 
@@ -115,19 +117,90 @@ where
     }
 
     fn handle(&mut self, cx: &mut Context, event: &Event) -> Response {
-        let result = self.children.try_for_each_rev(|child| {
-            if child.elem.handle(cx, event) == Response::Capture {
-                ControlFlow::Break(())
-            } else {
-                ControlFlow::Continue(())
-            }
-        });
+        match event {
+            Event::MouseEnter => {}
+            Event::MouseExit => {
+                self.children.try_for_each(|child| {
+                    if child.hover {
+                        child.hover = false;
+                        child.elem.handle(cx, &Event::MouseExit);
+                        return ControlFlow::Break(());
+                    }
 
-        if result.is_break() {
-            Response::Capture
-        } else {
-            Response::Ignore
+                    ControlFlow::Continue(())
+                });
+            }
+            Event::MouseMove(pos) => {
+                let mut index = 0;
+                let mut hover = None;
+                let mut hover_changed = false;
+                self.children.try_for_each_rev(|child| {
+                    if child.elem.hit_test(cx, *pos - Point::new(child.offset, 0.0)) {
+                        hover = Some(index);
+                        if !child.hover {
+                            hover_changed = true;
+                        }
+                        return ControlFlow::Break(());
+                    }
+
+                    index += 1;
+                    ControlFlow::Continue(())
+                });
+
+                if hover_changed {
+                    self.children.try_for_each(|child| {
+                        if child.hover {
+                            child.hover = false;
+                            child.elem.handle(cx, &Event::MouseExit);
+                            return ControlFlow::Break(());
+                        }
+
+                        ControlFlow::Continue(())
+                    });
+                }
+
+                if let Some(hover) = hover {
+                    let mut index = 0;
+                    let result = self.children.try_for_each_rev(|child| {
+                        if index == hover {
+                            if !child.hover {
+                                child.hover = true;
+                                child.elem.handle(cx, &Event::MouseEnter);
+                            }
+
+                            let pos = *pos - Point::new(child.offset, 0.0);
+                            let response = child.elem.handle(cx, &Event::MouseMove(pos));
+                            return ControlFlow::Break(response);
+                        }
+
+                        index += 1;
+                        ControlFlow::Continue(())
+                    });
+
+                    return match result {
+                        ControlFlow::Break(response) => response,
+                        ControlFlow::Continue(()) => Response::Ignore,
+                    };
+                }
+            }
+            Event::MouseDown(..) | Event::MouseUp(..) | Event::Scroll(..) => {
+                let result = self.children.try_for_each(|child| {
+                    if child.hover {
+                        let response = child.elem.handle(cx, &event);
+                        return ControlFlow::Break(response);
+                    }
+
+                    ControlFlow::Continue(())
+                });
+
+                return match result {
+                    ControlFlow::Break(response) => response,
+                    ControlFlow::Continue(()) => Response::Ignore,
+                };
+            }
         }
+
+        Response::Ignore
     }
 
     fn measure(&mut self, cx: &mut Context, proposal: ProposedSize) -> Size {
