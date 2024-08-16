@@ -5,7 +5,7 @@ use crate::{Point, ProposedSize, Size};
 
 pub struct Context {}
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Event {
     MouseMove(Point),
     MouseDown(MouseButton),
@@ -13,7 +13,7 @@ pub enum Event {
     Scroll(Point),
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum Response {
     Capture,
     Ignore,
