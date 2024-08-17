@@ -13,7 +13,7 @@ pub mod elems;
 pub mod list;
 
 pub use app::App;
-pub use elem::{Build, Context, Elem, Event, Response};
+pub use elem::{AsAny, Build, Context, Elem, Event, Response};
 pub use error::{Error, Result};
 pub use geom::{Point, ProposedSize, Size};
 pub use window::{Window, WindowOptions};

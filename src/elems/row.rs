@@ -66,7 +66,7 @@ impl<E: Build> BuildItem<E> for RowBuilder {
 impl<L> Build for Row<L>
 where
     L: BuildList<RowBuilder>,
-    L::List: List<RowItem<dyn Elem>>,
+    L::List: List<RowItem<dyn Elem>> + 'static,
 {
     type Elem = RowElem<L::List>;
 
@@ -96,7 +96,7 @@ pub struct RowElem<L> {
 
 impl<L> Elem for RowElem<L>
 where
-    L: List<RowItem<dyn Elem>>,
+    L: List<RowItem<dyn Elem>> + 'static,
 {
     fn update(&mut self, cx: &mut Context) {
         self.children.for_each(|child| {
