@@ -1,6 +1,6 @@
 use graphics::{Affine, Canvas, Color, Font, TextLayout};
 
-use crate::{Build, Context, Elem, Event, ProposedSize, Response, Size, Point};
+use crate::{Build, Context, Elem, Event, Point, ProposedSize, Response, Size};
 
 pub struct Text<T> {
     text: T,
