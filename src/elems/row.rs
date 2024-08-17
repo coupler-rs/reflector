@@ -41,32 +41,32 @@ impl<L> Row<L> {
 
 pub struct RowBuilder;
 
-impl<E: Elem + 'static> AsMut<RowItem<dyn Elem>> for RowItem<E> {
-    fn as_mut(&mut self) -> &mut RowItem<dyn Elem> {
+impl AsMut<RowItem> for RowItem {
+    fn as_mut(&mut self) -> &mut RowItem {
         self
     }
 }
 
 impl<E: Build> BuildItem<E> for RowBuilder {
-    type Item = RowItem<E::Elem>;
+    type Item = RowItem;
 
     fn build_item(&mut self, cx: &mut Context, value: E) -> Self::Item {
         RowItem {
             offset: 0.0,
             hover: false,
-            elem: value.build(cx),
+            elem: Box::new(value.build(cx)),
         }
     }
 
     fn rebuild_item(&mut self, cx: &mut Context, value: E, item: &mut Self::Item) {
-        value.rebuild(cx, &mut item.elem);
+        value.rebuild(cx, item.elem.downcast_mut().unwrap());
     }
 }
 
 impl<L> Build for Row<L>
 where
     L: BuildList<RowBuilder>,
-    L::List: List<RowItem<dyn Elem>> + 'static,
+    L::List: List<RowItem> + 'static,
 {
     type Elem = RowElem<L::List>;
 
@@ -83,10 +83,10 @@ where
     }
 }
 
-pub struct RowItem<E: ?Sized> {
+pub struct RowItem {
     offset: f32,
     hover: bool,
-    elem: E,
+    elem: Box<dyn Elem>,
 }
 
 pub struct RowElem<L> {
@@ -96,7 +96,7 @@ pub struct RowElem<L> {
 
 impl<L> Elem for RowElem<L>
 where
-    L: List<RowItem<dyn Elem>> + 'static,
+    L: List<RowItem> + 'static,
 {
     fn update(&mut self, cx: &mut Context) {
         self.children.for_each(|child| {
