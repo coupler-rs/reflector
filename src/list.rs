@@ -1,203 +1,208 @@
-use std::ops::ControlFlow;
+use std::ops::{Bound, RangeBounds};
 
 use crate::Context;
 
-pub trait BuildList<B> {
-    type List;
+pub trait Edit<T> {
+    fn len(&self) -> usize;
+    fn push(&mut self, item: T);
+    fn insert(&mut self, index: usize, item: T);
+    fn remove(&mut self, index: usize) -> T;
+    fn get(&self, index: usize) -> Option<&T>;
+    fn get_mut(&mut self, index: usize) -> Option<&mut T>;
+}
 
-    fn build_list(self, cx: &mut Context, builder: &mut B) -> Self::List;
-    fn rebuild_list(self, cx: &mut Context, builder: &mut B, list: &mut Self::List);
+pub struct EditVec<'a, T> {
+    vec: &'a mut Vec<T>,
+}
+
+impl<'a, T> EditVec<'a, T> {
+    pub fn new(vec: &'a mut Vec<T>) -> EditVec<'a, T> {
+        EditVec { vec }
+    }
+}
+
+impl<'a, T> Edit<T> for EditVec<'a, T> {
+    fn len(&self) -> usize {
+        self.vec.len()
+    }
+
+    fn push(&mut self, item: T) {
+        self.vec.push(item);
+    }
+
+    fn insert(&mut self, index: usize, item: T) {
+        self.vec.insert(index, item);
+    }
+
+    fn remove(&mut self, index: usize) -> T {
+        self.vec.remove(index)
+    }
+
+    fn get(&self, index: usize) -> Option<&T> {
+        self.vec.get(index)
+    }
+
+    fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+        self.vec.get_mut(index)
+    }
+}
+
+pub struct EditRange<'a, E> {
+    edit: &'a mut E,
+    from_start: usize,
+    from_end: usize,
+}
+
+impl<'a, E> EditRange<'a, E> {
+    pub fn new<T, R>(edit: &'a mut E, range: R) -> EditRange<E>
+    where
+        E: Edit<T>,
+        R: RangeBounds<usize>,
+    {
+        let len = edit.len();
+
+        let start = match range.start_bound() {
+            Bound::Included(&index) => index,
+            Bound::Excluded(&index) => index + 1,
+            Bound::Unbounded => 0,
+        };
+
+        let end = match range.end_bound() {
+            Bound::Included(&index) => index + 1,
+            Bound::Excluded(&index) => index,
+            Bound::Unbounded => len,
+        };
+
+        assert!(start <= end);
+        assert!(end <= len);
+
+        EditRange {
+            edit,
+            from_start: start,
+            from_end: len - end,
+        }
+    }
+}
+
+impl<'a, T, E> Edit<T> for EditRange<'a, E>
+where
+    E: Edit<T>,
+{
+    fn len(&self) -> usize {
+        let start = self.from_start;
+        let end = self.edit.len() - self.from_end;
+        end - start
+    }
+
+    fn push(&mut self, item: T) {
+        self.edit.insert(self.edit.len() - self.from_end, item);
+    }
+
+    fn insert(&mut self, index: usize, item: T) {
+        assert!(index <= self.len());
+
+        self.edit.insert(self.from_start + index, item);
+    }
+
+    fn remove(&mut self, index: usize) -> T {
+        assert!(index <= self.len());
+
+        self.edit.remove(self.from_start + index)
+    }
+
+    fn get(&self, index: usize) -> Option<&T> {
+        assert!(index <= self.len());
+
+        self.edit.get(index)
+    }
+
+    fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+        assert!(index <= self.len());
+
+        self.edit.get_mut(index)
+    }
+}
+
+pub trait BuildList<T> {
+    type State;
+
+    fn build_list(self, cx: &mut Context, list: &mut impl Edit<T>) -> Self::State;
+    fn rebuild_list(self, cx: &mut Context, list: &mut impl Edit<T>, state: &mut Self::State);
 }
 
 pub trait BuildItem<T> {
-    type Item;
-
-    fn build_item(&mut self, cx: &mut Context, value: T) -> Self::Item;
-    fn rebuild_item(&mut self, cx: &mut Context, value: T, item: &mut Self::Item);
-}
-
-pub trait List<T: ?Sized> {
-    fn for_each<F>(&mut self, f: F)
-    where
-        F: FnMut(&mut T);
-
-    fn try_for_each<F, B>(&mut self, f: F) -> ControlFlow<B>
-    where
-        F: FnMut(&mut T) -> ControlFlow<B>;
-
-    fn for_each_rev<F>(&mut self, f: F)
-    where
-        F: FnMut(&mut T);
-
-    fn try_for_each_rev<F, B>(&mut self, f: F) -> ControlFlow<B>
-    where
-        F: FnMut(&mut T) -> ControlFlow<B>;
+    fn build_item(self, cx: &mut Context) -> T;
+    fn rebuild_item(self, cx: &mut Context, item: &mut T);
 }
 
 pub struct Empty;
 
-impl<B> BuildList<B> for Empty {
-    type List = Empty;
+impl<T> BuildList<T> for Empty {
+    type State = ();
 
-    fn build_list(self, _cx: &mut Context, _builder: &mut B) -> Self::List {
-        Empty
+    fn build_list(self, _cx: &mut Context, _list: &mut impl Edit<T>) -> Self::State {
+        ()
     }
 
-    fn rebuild_list(self, _cx: &mut Context, _builder: &mut B, _list: &mut Self::List) {}
+    fn rebuild_list(self, _cx: &mut Context, _list: &mut impl Edit<T>, _state: &mut Self::State) {}
 }
 
-impl<T: ?Sized> List<T> for Empty {
-    fn for_each<F>(&mut self, _f: F)
-    where
-        F: FnMut(&mut T),
-    {
-    }
+pub struct Append<L, I>(pub L, pub I);
 
-    fn try_for_each<F, B>(&mut self, _f: F) -> ControlFlow<B>
-    where
-        F: FnMut(&mut T) -> ControlFlow<B>,
-    {
-        ControlFlow::Continue(())
-    }
-
-    fn for_each_rev<F>(&mut self, _f: F)
-    where
-        F: FnMut(&mut T),
-    {
-    }
-
-    fn try_for_each_rev<F, B>(&mut self, _f: F) -> ControlFlow<B>
-    where
-        F: FnMut(&mut T) -> ControlFlow<B>,
-    {
-        ControlFlow::Continue(())
-    }
-}
-
-pub struct Append<H, T>(pub H, pub T);
-
-impl<H, T, B> BuildList<B> for Append<H, T>
+impl<L, I, T> BuildList<T> for Append<L, I>
 where
-    H: BuildList<B>,
-    B: BuildItem<T>,
+    L: BuildList<T>,
+    I: BuildItem<T>,
 {
-    type List = Append<H::List, B::Item>;
+    type State = L::State;
 
-    fn build_list(self, cx: &mut Context, builder: &mut B) -> Self::List {
-        Append(
-            self.0.build_list(cx, builder),
-            builder.build_item(cx, self.1),
-        )
+    fn build_list(self, cx: &mut Context, list: &mut impl Edit<T>) -> Self::State {
+        let state = self.0.build_list(cx, list);
+        list.push(self.1.build_item(cx));
+        state
     }
 
-    fn rebuild_list(self, cx: &mut Context, builder: &mut B, list: &mut Self::List) {
-        self.0.rebuild_list(cx, builder, &mut list.0);
-        builder.rebuild_item(cx, self.1, &mut list.1);
-    }
-}
-
-impl<H, U, T: ?Sized> List<T> for Append<H, U>
-where
-    H: List<T>,
-    U: AsMut<T>,
-{
-    fn for_each<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut T),
-    {
-        self.0.for_each(|x| f(x));
-        f(self.1.as_mut());
-    }
-
-    fn try_for_each<F, B>(&mut self, mut f: F) -> ControlFlow<B>
-    where
-        F: FnMut(&mut T) -> ControlFlow<B>,
-    {
-        self.0.try_for_each(|x| f(x))?;
-        f(self.1.as_mut())?;
-
-        ControlFlow::Continue(())
-    }
-
-    fn for_each_rev<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut T),
-    {
-        f(self.1.as_mut());
-        self.0.for_each_rev(|x| f(x));
-    }
-
-    fn try_for_each_rev<F, B>(&mut self, mut f: F) -> ControlFlow<B>
-    where
-        F: FnMut(&mut T) -> ControlFlow<B>,
-    {
-        f(self.1.as_mut())?;
-        self.0.try_for_each_rev(|x| f(x))?;
-
-        ControlFlow::Continue(())
+    fn rebuild_list(self, cx: &mut Context, list: &mut impl Edit<T>, state: &mut Self::State) {
+        let last = list.len() - 1;
+        self.0.rebuild_list(cx, &mut EditRange::new(list, ..last), state);
+        self.1.rebuild_item(cx, list.get_mut(last).unwrap());
     }
 }
 
 pub struct Concat<L, M>(pub L, pub M);
 
-impl<L, M, B> BuildList<B> for Concat<L, M>
-where
-    L: BuildList<B>,
-    M: BuildList<B>,
-{
-    type List = Concat<L::List, M::List>;
-
-    fn build_list(self, cx: &mut Context, builder: &mut B) -> Self::List {
-        Concat(
-            self.0.build_list(cx, builder),
-            self.1.build_list(cx, builder),
-        )
-    }
-
-    fn rebuild_list(self, cx: &mut Context, builder: &mut B, list: &mut Self::List) {
-        self.0.rebuild_list(cx, builder, &mut list.0);
-        self.1.rebuild_list(cx, builder, &mut list.1);
-    }
+pub struct ConcatState<L, M> {
+    split: usize,
+    first: L,
+    second: M,
 }
 
-impl<L, M, T: ?Sized> List<T> for Concat<L, M>
+impl<L, M, T> BuildList<T> for Concat<L, M>
 where
-    L: List<T>,
-    M: List<T>,
+    L: BuildList<T>,
+    M: BuildList<T>,
 {
-    fn for_each<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut T),
-    {
-        self.0.for_each(|x| f(x));
-        self.1.for_each(|x| f(x));
+    type State = ConcatState<L::State, M::State>;
+
+    fn build_list(self, cx: &mut Context, list: &mut impl Edit<T>) -> Self::State {
+        let first = self.0.build_list(cx, list);
+        let split = list.len();
+        let second = self.1.build_list(cx, &mut EditRange::new(list, split..));
+
+        ConcatState {
+            split,
+            first,
+            second,
+        }
     }
 
-    fn try_for_each<F, B>(&mut self, mut f: F) -> ControlFlow<B>
-    where
-        F: FnMut(&mut T) -> ControlFlow<B>,
-    {
-        self.0.try_for_each(|x| f(x))?;
-        self.1.try_for_each(|x| f(x))?;
+    fn rebuild_list(self, cx: &mut Context, list: &mut impl Edit<T>, state: &mut Self::State) {
+        let mut first = EditRange::new(list, ..state.split);
+        self.0.rebuild_list(cx, &mut first, &mut state.first);
 
-        ControlFlow::Continue(())
-    }
+        state.split = first.len();
 
-    fn for_each_rev<F>(&mut self, mut f: F)
-    where
-        F: FnMut(&mut T),
-    {
-        self.1.for_each(|x| f(x));
-        self.0.for_each(|x| f(x));
-    }
-
-    fn try_for_each_rev<F, B>(&mut self, mut f: F) -> ControlFlow<B>
-    where
-        F: FnMut(&mut T) -> ControlFlow<B>,
-    {
-        self.1.try_for_each(|x| f(x))?;
-        self.0.try_for_each(|x| f(x))?;
-
-        ControlFlow::Continue(())
+        let mut second = EditRange::new(list, state.split..);
+        self.1.rebuild_list(cx, &mut second, &mut state.second);
     }
 }

@@ -1,7 +1,5 @@
-use std::ops::ControlFlow;
-
 use crate::graphics::{Affine, Canvas};
-use crate::list::{Append, BuildItem, BuildList, Concat, Empty, List};
+use crate::list::{Append, BuildItem, BuildList, Concat, EditVec, Empty};
 use crate::{Build, Context, Elem, Event, Point, ProposedSize, Response, Size};
 
 pub struct Row<L> {
@@ -24,14 +22,14 @@ impl<L> Row<L> {
         self
     }
 
-    pub fn child<E: Build>(self, child: E) -> Row<Append<L, E>> {
+    pub fn child<E: BuildItem<RowItem>>(self, child: E) -> Row<Append<L, E>> {
         Row {
             spacing: self.spacing,
             children: Append(self.children, child),
         }
     }
 
-    pub fn children<M: BuildList<RowBuilder>>(self, children: M) -> Row<Concat<L, M>> {
+    pub fn children<M: BuildList<RowItem>>(self, children: M) -> Row<Concat<L, M>> {
         Row {
             spacing: self.spacing,
             children: Concat(self.children, children),
@@ -39,47 +37,48 @@ impl<L> Row<L> {
     }
 }
 
-pub struct RowBuilder;
-
 impl AsMut<RowItem> for RowItem {
     fn as_mut(&mut self) -> &mut RowItem {
         self
     }
 }
 
-impl<E: Build> BuildItem<E> for RowBuilder {
-    type Item = RowItem;
-
-    fn build_item(&mut self, cx: &mut Context, value: E) -> Self::Item {
+impl<E: Build> BuildItem<RowItem> for E {
+    fn build_item(self, cx: &mut Context) -> RowItem {
         RowItem {
             offset: 0.0,
             hover: false,
-            elem: Box::new(value.build(cx)),
+            elem: Box::new(self.build(cx)),
         }
     }
 
-    fn rebuild_item(&mut self, cx: &mut Context, value: E, item: &mut Self::Item) {
-        value.rebuild(cx, item.elem.downcast_mut().unwrap());
+    fn rebuild_item(self, cx: &mut Context, item: &mut RowItem) {
+        self.rebuild(cx, item.elem.downcast_mut().unwrap());
     }
 }
 
 impl<L> Build for Row<L>
 where
-    L: BuildList<RowBuilder>,
-    L::List: List<RowItem> + 'static,
+    L: BuildList<RowItem>,
+    L::State: 'static,
 {
-    type Elem = RowElem<L::List>;
+    type Elem = RowElem<L::State>;
 
     fn build(self, cx: &mut Context) -> Self::Elem {
+        let mut children = Vec::new();
+        let list_state = self.children.build_list(cx, &mut EditVec::new(&mut children));
+
         RowElem {
             spacing: self.spacing,
-            children: self.children.build_list(cx, &mut RowBuilder),
+            list_state,
+            children,
         }
     }
 
     fn rebuild(self, cx: &mut Context, elem: &mut Self::Elem) {
         elem.spacing = self.spacing;
-        self.children.rebuild_list(cx, &mut RowBuilder, &mut elem.children);
+        let mut children = EditVec::new(&mut elem.children);
+        self.children.rebuild_list(cx, &mut children, &mut elem.list_state);
     }
 }
 
@@ -91,112 +90,79 @@ pub struct RowItem {
 
 pub struct RowElem<L> {
     spacing: f32,
-    children: L,
+    list_state: L,
+    children: Vec<RowItem>,
 }
 
-impl<L> Elem for RowElem<L>
-where
-    L: List<RowItem> + 'static,
-{
+impl<L: 'static> Elem for RowElem<L> {
     fn update(&mut self, cx: &mut Context) {
-        self.children.for_each(|child| {
+        for child in &mut self.children {
             child.elem.update(cx);
-        });
+        }
     }
 
     fn hit_test(&mut self, cx: &mut Context, point: Point) -> bool {
-        let result = self.children.try_for_each_rev(|child| {
+        for child in self.children.iter_mut().rev() {
             if child.elem.hit_test(cx, point - Point::new(child.offset, 0.0)) {
-                ControlFlow::Break(())
-            } else {
-                ControlFlow::Continue(())
+                return true;
             }
-        });
+        }
 
-        result.is_break()
+        false
     }
 
     fn handle(&mut self, cx: &mut Context, event: &Event) -> Response {
         match event {
             Event::MouseEnter => {}
             Event::MouseExit => {
-                self.children.try_for_each(|child| {
+                for child in &mut self.children {
                     if child.hover {
                         child.hover = false;
                         child.elem.handle(cx, &Event::MouseExit);
-                        return ControlFlow::Break(());
+                        break;
                     }
-
-                    ControlFlow::Continue(())
-                });
+                }
             }
             Event::MouseMove(pos) => {
-                let mut index = 0;
                 let mut hover = None;
                 let mut hover_changed = false;
-                self.children.try_for_each_rev(|child| {
+                for (index, child) in self.children.iter_mut().enumerate().rev() {
                     if child.elem.hit_test(cx, *pos - Point::new(child.offset, 0.0)) {
                         hover = Some(index);
                         if !child.hover {
                             hover_changed = true;
                         }
-                        return ControlFlow::Break(());
+                        break;
                     }
-
-                    index += 1;
-                    ControlFlow::Continue(())
-                });
+                }
 
                 if hover_changed {
-                    self.children.try_for_each(|child| {
+                    for child in &mut self.children {
                         if child.hover {
                             child.hover = false;
                             child.elem.handle(cx, &Event::MouseExit);
-                            return ControlFlow::Break(());
+                            break;
                         }
-
-                        ControlFlow::Continue(())
-                    });
+                    }
                 }
 
                 if let Some(hover) = hover {
-                    let mut index = 0;
-                    let result = self.children.try_for_each_rev(|child| {
-                        if index == hover {
-                            if !child.hover {
-                                child.hover = true;
-                                child.elem.handle(cx, &Event::MouseEnter);
-                            }
+                    let child = &mut self.children[hover];
+                    if !child.hover {
+                        child.hover = true;
+                        child.elem.handle(cx, &Event::MouseEnter);
+                    }
 
-                            let pos = *pos - Point::new(child.offset, 0.0);
-                            let response = child.elem.handle(cx, &Event::MouseMove(pos));
-                            return ControlFlow::Break(response);
-                        }
-
-                        index += 1;
-                        ControlFlow::Continue(())
-                    });
-
-                    return match result {
-                        ControlFlow::Break(response) => response,
-                        ControlFlow::Continue(()) => Response::Ignore,
-                    };
+                    let pos = *pos - Point::new(child.offset, 0.0);
+                    return child.elem.handle(cx, &Event::MouseMove(pos));
                 }
             }
             Event::MouseDown(..) | Event::MouseUp(..) | Event::Scroll(..) => {
-                let result = self.children.try_for_each(|child| {
+                for child in &mut self.children {
                     if child.hover {
-                        let response = child.elem.handle(cx, &event);
-                        return ControlFlow::Break(response);
+                        return child.elem.handle(cx, &event);
                     }
-
-                    ControlFlow::Continue(())
-                });
-
-                return match result {
-                    ControlFlow::Break(response) => response,
-                    ControlFlow::Continue(()) => Response::Ignore,
-                };
+                }
             }
         }
 
@@ -207,12 +173,12 @@ where
         let proposal = ProposedSize::new(None, proposal.height);
 
         let mut size = Size::new(0.0, 0.0);
-        self.children.for_each(|child| {
+        for child in &mut self.children {
             let child_size = child.elem.measure(cx, proposal);
 
             size.width += child_size.width + self.spacing;
             size.height = size.height.max(child_size.height);
-        });
+        }
 
         size.width -= self.spacing;
 
@@ -223,22 +189,22 @@ where
         let proposal = ProposedSize::new(None, Some(size.height));
 
         let mut offset = 0.0;
-        self.children.for_each(|child| {
+        for child in &mut self.children {
             let child_size = child.elem.measure(cx, proposal);
             child.elem.place(cx, child_size);
 
             child.offset = offset;
 
             offset += child_size.width + self.spacing;
-        });
+        }
     }
 
     fn render(&mut self, cx: &mut Context, canvas: &mut Canvas) {
-        self.children.for_each(|child| {
+        for child in &mut self.children {
             let transform = Affine::translate(child.offset, 0.0);
             canvas.with_transform(transform, |canvas| {
                 child.elem.render(cx, canvas);
             });
-        });
+        }
     }
 }
