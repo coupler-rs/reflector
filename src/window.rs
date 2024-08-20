@@ -48,6 +48,12 @@ impl<E: Elem> Handler<E> {
                 cx.window().close();
                 cx.app().exit();
             }
+            platform::Event::MouseExit => {
+                if self.hover {
+                    self.hover = false;
+                    self.root.handle(&mut Context {}, &Event::MouseExit);
+                }
+            }
             platform::Event::MouseMove(pos) => {
                 let pos = Point::new(pos.x as f32, pos.y as f32);
                 if self.root.hit_test(&mut Context {}, pos) {
