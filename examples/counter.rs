@@ -1,4 +1,4 @@
-use reflector::elems::{Row, Text};
+use reflector::elems::{Button, Row, Text};
 use reflector::graphics::Font;
 use reflector::{App, Build, Size, WindowOptions};
 
@@ -11,9 +11,7 @@ fn build() -> impl Build {
 
     Row::new(5.0)
         .child(Text::new("text", font.clone(), 16.0))
-        .child(Text::new("text", font.clone(), 16.0))
-        .child(Text::new("text", font.clone(), 16.0))
-        .child(Text::new("text", font.clone(), 16.0))
+        .child(Button::new(Text::new("button", font.clone(), 16.0)).action(|| println!("click")))
 }
 
 fn main() {
