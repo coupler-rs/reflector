@@ -206,3 +206,46 @@ where
         self.1.rebuild_list(cx, &mut second, &mut state.second);
     }
 }
+
+impl<T> BuildList<T> for () {
+    type State = ();
+
+    fn build_list(self, _cx: &mut Context, _list: &mut impl Edit<T>) -> Self::State {
+        ()
+    }
+
+    fn rebuild_list(self, _cx: &mut Context, _list: &mut impl Edit<T>, _state: &mut Self::State) {}
+}
+
+macro_rules! build_list_tuple {
+    ($($index:tt $item:ident),*) => {
+        impl<$($item,)* T> BuildList<T> for ($($item,)*)
+        where
+            $($item: BuildItem<T>,)*
+        {
+            type State = ();
+
+            fn build_list(self, cx: &mut Context, list: &mut impl Edit<T>) -> Self::State {
+                $(list.push(self.$index.build_item(cx));)*
+                ()
+            }
+
+            fn rebuild_list(self, cx: &mut Context, list: &mut impl Edit<T>, _state: &mut Self::State) {
+                $(self.$index.rebuild_item(cx, list.get_mut($index).unwrap());)*
+            }
+        }
+    }
+}
+
+build_list_tuple!(0 T0);
+build_list_tuple!(0 T0, 1 T1);
+build_list_tuple!(0 T0, 1 T1, 2 T2);
+build_list_tuple!(0 T0, 1 T1, 2 T2, 3 T3);
+build_list_tuple!(0 T0, 1 T1, 2 T2, 3 T3, 4 T4);
+build_list_tuple!(0 T0, 1 T1, 2 T2, 3 T3, 4 T4, 5 T5);
+build_list_tuple!(0 T0, 1 T1, 2 T2, 3 T3, 4 T4, 5 T5, 6 T6);
+build_list_tuple!(0 T0, 1 T1, 2 T2, 3 T3, 4 T4, 5 T5, 6 T6, 7 T7);
+build_list_tuple!(0 T0, 1 T1, 2 T2, 3 T3, 4 T4, 5 T5, 6 T6, 7 T7, 8 T8);
+build_list_tuple!(0 T0, 1 T1, 2 T2, 3 T3, 4 T4, 5 T5, 6 T6, 7 T7, 8 T8, 9 T9);
+build_list_tuple!(0 T0, 1 T1, 2 T2, 3 T3, 4 T4, 5 T5, 6 T6, 7 T7, 8 T8, 9 T9, 10 T10);
+build_list_tuple!(0 T0, 1 T1, 2 T2, 3 T3, 4 T4, 5 T5, 6 T6, 7 T7, 8 T8, 9 T9, 10 T10, 11 T11);
