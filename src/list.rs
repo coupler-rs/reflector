@@ -4,6 +4,9 @@ use crate::Context;
 
 pub trait Edit<T> {
     fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() != 0
+    }
     fn push(&mut self, item: T);
     fn insert(&mut self, index: usize, item: T);
     fn remove(&mut self, index: usize) -> T;
