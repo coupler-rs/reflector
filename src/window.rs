@@ -38,7 +38,7 @@ impl<E: Elem> Handler<E> {
                 let mut canvas = self.renderer.canvas(&mut self.framebuffer, width, height);
                 canvas.clear(Color::rgba(255, 255, 255, 255));
 
-                canvas.with_transform(Affine::scale(scale as f32), |canvas| {
+                canvas.with_transform(Affine::scale(scale), |canvas| {
                     self.root.render(&mut Context {}, canvas);
                 });
 

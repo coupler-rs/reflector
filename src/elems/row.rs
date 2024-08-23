@@ -160,7 +160,7 @@ impl<L: 'static> Elem for RowElem<L> {
             Event::MouseDown(..) | Event::MouseUp(..) | Event::Scroll(..) => {
                 for child in &mut self.children {
                     if child.hover {
-                        return child.elem.handle(cx, &event);
+                        return child.elem.handle(cx, event);
                     }
                 }
             }
