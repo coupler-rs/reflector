@@ -56,6 +56,8 @@ impl<E: Elem> Handler<E> {
             }
             platform::Event::MouseMove(pos) => {
                 let pos = Point::new(pos.x as f32, pos.y as f32);
+
+                #[allow(clippy::collapsible_else_if)]
                 if self.root.hit_test(&mut Context {}, pos) {
                     if !self.hover {
                         self.hover = true;

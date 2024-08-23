@@ -1,3 +1,5 @@
+#![allow(clippy::unused_unit)]
+
 use std::ops::{Bound, RangeBounds};
 
 use crate::Context;
@@ -268,6 +270,7 @@ where
     }
 
     fn rebuild_list(self, cx: &mut Context, list: &mut impl Edit<T>, _state: &mut Self::State) {
+        #[allow(clippy::collapsible_else_if)]
         if let Some(builder) = self {
             if let Some(item) = list.get_mut(0) {
                 builder.rebuild_item(cx, item);
