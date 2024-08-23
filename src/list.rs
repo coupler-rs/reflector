@@ -252,3 +252,32 @@ build_list_tuple!(0 T0, 1 T1, 2 T2, 3 T3, 4 T4, 5 T5, 6 T6, 7 T7, 8 T8);
 build_list_tuple!(0 T0, 1 T1, 2 T2, 3 T3, 4 T4, 5 T5, 6 T6, 7 T7, 8 T8, 9 T9);
 build_list_tuple!(0 T0, 1 T1, 2 T2, 3 T3, 4 T4, 5 T5, 6 T6, 7 T7, 8 T8, 9 T9, 10 T10);
 build_list_tuple!(0 T0, 1 T1, 2 T2, 3 T3, 4 T4, 5 T5, 6 T6, 7 T7, 8 T8, 9 T9, 10 T10, 11 T11);
+
+impl<B, T> BuildList<T> for Option<B>
+where
+    B: BuildItem<T>,
+{
+    type State = ();
+
+    fn build_list(self, cx: &mut Context, list: &mut impl Edit<T>) -> Self::State {
+        if let Some(builder) = self {
+            list.push(builder.build_item(cx));
+        }
+
+        ()
+    }
+
+    fn rebuild_list(self, cx: &mut Context, list: &mut impl Edit<T>, _state: &mut Self::State) {
+        if let Some(builder) = self {
+            if let Some(item) = list.get_mut(0) {
+                builder.rebuild_item(cx, item);
+            } else {
+                list.push(builder.build_item(cx));
+            }
+        } else {
+            if !list.is_empty() {
+                list.remove(0);
+            }
+        }
+    }
+}
