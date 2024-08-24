@@ -1,5 +1,5 @@
 use graphics::{Affine, Color, Renderer};
-use platform::{Bitmap, WindowContext};
+use platform::{Bitmap, WindowContext, RawWindow};
 
 use crate::{App, Build, Context, Elem, Event, Point, ProposedSize, Result, Size};
 
@@ -117,6 +117,11 @@ impl WindowOptions {
 
     pub fn size(&mut self, size: Size) -> &mut Self {
         self.inner.size(platform::Size::new(size.width as f64, size.height as f64));
+        self
+    }
+
+    pub unsafe fn raw_parent(&mut self, parent: RawWindow) -> &mut Self {
+        self.inner.raw_parent(parent);
         self
     }
 
