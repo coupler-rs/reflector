@@ -73,14 +73,20 @@ impl<E: Elem> Handler<E> {
                 }
             }
             platform::Event::MouseDown(button) => {
-                self.root.handle(&mut Context {}, &Event::MouseDown(button));
+                if self.hover {
+                    self.root.handle(&mut Context {}, &Event::MouseDown(button));
+                }
             }
             platform::Event::MouseUp(button) => {
-                self.root.handle(&mut Context {}, &Event::MouseUp(button));
+                if self.hover {
+                    self.root.handle(&mut Context {}, &Event::MouseUp(button));
+                }
             }
             platform::Event::Scroll(delta) => {
-                let delta = Point::new(delta.x as f32, delta.y as f32);
-                self.root.handle(&mut Context {}, &Event::Scroll(delta));
+                if self.hover {
+                    let delta = Point::new(delta.x as f32, delta.y as f32);
+                    self.root.handle(&mut Context {}, &Event::Scroll(delta));
+                }
             }
             _ => {}
         }
