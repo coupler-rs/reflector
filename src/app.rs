@@ -1,10 +1,10 @@
-pub use platform::AppMode;
+pub use platform::{EventLoop, EventLoopOptions, Mode};
 
 use crate::Result;
 
 #[derive(Default)]
 pub struct AppOptions {
-    inner: platform::AppOptions,
+    event_loop_options: EventLoopOptions,
 }
 
 impl AppOptions {
@@ -12,20 +12,20 @@ impl AppOptions {
         Self::default()
     }
 
-    pub fn mode(&mut self, mode: AppMode) -> &mut Self {
-        self.inner.mode(mode);
+    pub fn mode(&mut self, mode: Mode) -> &mut Self {
+        self.event_loop_options.mode(mode);
         self
     }
 
     pub fn build(&self) -> Result<App> {
         Ok(App {
-            inner: self.inner.build()?,
+            event_loop: self.event_loop_options.build()?,
         })
     }
 }
 
 pub struct App {
-    pub(crate) inner: platform::App,
+    pub(crate) event_loop: EventLoop,
 }
 
 impl App {
@@ -34,6 +34,6 @@ impl App {
     }
 
     pub fn run(&self) -> Result<()> {
-        Ok(self.inner.run()?)
+        Ok(self.event_loop.run()?)
     }
 }
