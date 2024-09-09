@@ -73,11 +73,8 @@ pub unsafe extern "system" fn message_wnd_proc(
             event_loop.inner.state.timers.handle_timer(&event_loop, wparam.0);
         }
         WM_USER_VBLANK => {
-            event_loop
-                .inner
-                .state
-                .vsync_threads
-                .handle_vblank(&event_loop, HMONITOR(lparam.0));
+            let vsync_threads = &event_loop.inner.state.vsync_threads;
+            vsync_threads.handle_vblank(&event_loop, HMONITOR(lparam.0));
         }
         msg::WM_DESTROY => {
             SetWindowLongPtrW(hwnd, msg::GWLP_USERDATA, 0);
