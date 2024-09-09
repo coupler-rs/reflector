@@ -1,6 +1,6 @@
 use graphics::{Affine, Canvas, Color, Font, TextLayout};
 
-use crate::{Build, Context, Elem, Event, Point, ProposedSize, Response, Size};
+use crate::{BuildElem, Elem, ElemContext, ElemEvent, Point, ProposedSize, Response, Size};
 
 pub struct Text<T> {
     text: T,
@@ -17,13 +17,13 @@ where
     }
 }
 
-impl<T> Build for Text<T>
+impl<T> BuildElem for Text<T>
 where
     T: AsRef<str>,
 {
     type Elem = TextElem;
 
-    fn build(self, _cx: &mut Context) -> Self::Elem {
+    fn build(self, _cx: &mut ElemContext) -> Self::Elem {
         let text = self.text.as_ref().to_owned();
         let layout = TextLayout::new(&text, &self.font, self.size);
 
@@ -35,7 +35,7 @@ where
         }
     }
 
-    fn rebuild(self, _cx: &mut Context, elem: &mut Self::Elem) {
+    fn rebuild(self, _cx: &mut ElemContext, elem: &mut Self::Elem) {
         elem.text.clear();
         elem.text.push_str(self.text.as_ref());
         elem.font = self.font;
@@ -51,26 +51,26 @@ pub struct TextElem {
 }
 
 impl Elem for TextElem {
-    fn update(&mut self, _cx: &mut Context) {}
+    fn update(&mut self, _cx: &mut ElemContext) {}
 
-    fn hit_test(&mut self, _cx: &mut Context, point: Point) -> bool {
+    fn hit_test(&mut self, _cx: &mut ElemContext, point: Point) -> bool {
         point.x >= 0.0
             && point.x < self.layout.width()
             && point.y >= 0.0
             && point.y < self.layout.height()
     }
 
-    fn handle(&mut self, _cx: &mut Context, _event: &Event) -> Response {
+    fn handle(&mut self, _cx: &mut ElemContext, _event: &ElemEvent) -> Response {
         Response::Ignore
     }
 
-    fn measure(&mut self, _cx: &mut Context, _proposal: ProposedSize) -> Size {
+    fn measure(&mut self, _cx: &mut ElemContext, _proposal: ProposedSize) -> Size {
         Size::new(self.layout.width(), self.layout.height())
     }
 
-    fn place(&mut self, _cx: &mut Context, _size: Size) {}
+    fn place(&mut self, _cx: &mut ElemContext, _size: Size) {}
 
-    fn render(&mut self, _cx: &mut Context, canvas: &mut Canvas) {
+    fn render(&mut self, _cx: &mut ElemContext, canvas: &mut Canvas) {
         canvas.fill_glyphs(
             self.layout.glyphs(),
             &self.font,

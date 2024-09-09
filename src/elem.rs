@@ -5,10 +5,10 @@ pub use platform::MouseButton;
 
 use crate::{Point, ProposedSize, Size};
 
-pub struct Context {}
+pub struct ElemContext {}
 
 #[derive(Clone, Debug)]
-pub enum Event {
+pub enum ElemEvent {
     MouseEnter,
     MouseExit,
     MouseMove(Point),
@@ -23,11 +23,11 @@ pub enum Response {
     Ignore,
 }
 
-pub trait Build {
+pub trait BuildElem {
     type Elem: Elem;
 
-    fn build(self, cx: &mut Context) -> Self::Elem;
-    fn rebuild(self, cx: &mut Context, elem: &mut Self::Elem);
+    fn build(self, cx: &mut ElemContext) -> Self::Elem;
+    fn rebuild(self, cx: &mut ElemContext, elem: &mut Self::Elem);
 }
 
 pub trait AsAny: Any {
@@ -46,12 +46,12 @@ impl<T: Any> AsAny for T {
 }
 
 pub trait Elem: AsAny {
-    fn update(&mut self, cx: &mut Context);
-    fn hit_test(&mut self, cx: &mut Context, point: Point) -> bool;
-    fn handle(&mut self, cx: &mut Context, event: &Event) -> Response;
-    fn measure(&mut self, cx: &mut Context, proposal: ProposedSize) -> Size;
-    fn place(&mut self, cx: &mut Context, size: Size);
-    fn render(&mut self, cx: &mut Context, canvas: &mut Canvas);
+    fn update(&mut self, cx: &mut ElemContext);
+    fn hit_test(&mut self, cx: &mut ElemContext, point: Point) -> bool;
+    fn handle(&mut self, cx: &mut ElemContext, event: &ElemEvent) -> Response;
+    fn measure(&mut self, cx: &mut ElemContext, proposal: ProposedSize) -> Size;
+    fn place(&mut self, cx: &mut ElemContext, size: Size);
+    fn render(&mut self, cx: &mut ElemContext, canvas: &mut Canvas);
 }
 
 impl dyn Elem {

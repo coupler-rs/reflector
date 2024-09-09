@@ -1,7 +1,7 @@
 use graphics::{Affine, Color, Renderer};
 use platform::{Bitmap, RawWindow, WindowContext};
 
-use crate::{App, Build, Context, Elem, Event, Point, ProposedSize, Result, Size};
+use crate::{App, BuildElem, Elem, ElemContext, ElemEvent, Point, ProposedSize, Result, Size};
 
 struct Handler<E> {
     renderer: Renderer,
@@ -27,9 +27,9 @@ impl<E: Elem> Handler<E> {
                 let size = cx.window().size();
                 let size = Size::new(size.width as f32, size.height as f32);
 
-                self.root.update(&mut Context {});
-                let root_size = self.root.measure(&mut Context {}, ProposedSize::from(size));
-                self.root.place(&mut Context {}, root_size);
+                self.root.update(&mut ElemContext {});
+                let root_size = self.root.measure(&mut ElemContext {}, ProposedSize::from(size));
+                self.root.place(&mut ElemContext {}, root_size);
 
                 let width = (scale * size.width) as usize;
                 let height = (scale * size.height) as usize;
@@ -39,7 +39,7 @@ impl<E: Elem> Handler<E> {
                 canvas.clear(Color::rgba(255, 255, 255, 255));
 
                 canvas.with_transform(Affine::scale(scale), |canvas| {
-                    self.root.render(&mut Context {}, canvas);
+                    self.root.render(&mut ElemContext {}, canvas);
                 });
 
                 cx.window().present(Bitmap::new(&self.framebuffer, width, height));
@@ -51,41 +51,41 @@ impl<E: Elem> Handler<E> {
             platform::Event::MouseExit => {
                 if self.hover {
                     self.hover = false;
-                    self.root.handle(&mut Context {}, &Event::MouseExit);
+                    self.root.handle(&mut ElemContext {}, &ElemEvent::MouseExit);
                 }
             }
             platform::Event::MouseMove(pos) => {
                 let pos = Point::new(pos.x as f32, pos.y as f32);
 
                 #[allow(clippy::collapsible_else_if)]
-                if self.root.hit_test(&mut Context {}, pos) {
+                if self.root.hit_test(&mut ElemContext {}, pos) {
                     if !self.hover {
                         self.hover = true;
-                        self.root.handle(&mut Context {}, &Event::MouseEnter);
+                        self.root.handle(&mut ElemContext {}, &ElemEvent::MouseEnter);
                     }
 
-                    self.root.handle(&mut Context {}, &Event::MouseMove(pos));
+                    self.root.handle(&mut ElemContext {}, &ElemEvent::MouseMove(pos));
                 } else {
                     if self.hover {
                         self.hover = false;
-                        self.root.handle(&mut Context {}, &Event::MouseExit);
+                        self.root.handle(&mut ElemContext {}, &ElemEvent::MouseExit);
                     }
                 }
             }
             platform::Event::MouseDown(button) => {
                 if self.hover {
-                    self.root.handle(&mut Context {}, &Event::MouseDown(button));
+                    self.root.handle(&mut ElemContext {}, &ElemEvent::MouseDown(button));
                 }
             }
             platform::Event::MouseUp(button) => {
                 if self.hover {
-                    self.root.handle(&mut Context {}, &Event::MouseUp(button));
+                    self.root.handle(&mut ElemContext {}, &ElemEvent::MouseUp(button));
                 }
             }
             platform::Event::Scroll(delta) => {
                 if self.hover {
                     let delta = Point::new(delta.x as f32, delta.y as f32);
-                    self.root.handle(&mut Context {}, &Event::Scroll(delta));
+                    self.root.handle(&mut ElemContext {}, &ElemEvent::Scroll(delta));
                 }
             }
             _ => {}
@@ -127,10 +127,10 @@ impl WindowOptions {
 
     pub fn open<B>(&self, app: &App, root: B) -> Result<Window>
     where
-        B: Build,
+        B: BuildElem,
         B::Elem: 'static,
     {
-        let mut handler = Handler::new(root.build(&mut Context {}));
+        let mut handler = Handler::new(root.build(&mut ElemContext {}));
 
         let window = self.inner.open(app.inner.handle(), move |cx, event| {
             handler.handle(cx, event)

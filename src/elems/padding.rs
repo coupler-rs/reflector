@@ -1,6 +1,6 @@
 use graphics::{Affine, Canvas};
 
-use crate::{Build, Context, Elem, Event, Point, ProposedSize, Response, Size};
+use crate::{BuildElem, Elem, ElemContext, ElemEvent, Point, ProposedSize, Response, Size};
 
 pub struct Padding<E> {
     padding_x: f32,
@@ -8,7 +8,7 @@ pub struct Padding<E> {
     child: E,
 }
 
-impl<E: Build> Padding<E> {
+impl<E: BuildElem> Padding<E> {
     pub fn new(padding: f32, child: E) -> Padding<E> {
         Padding {
             padding_x: padding,
@@ -26,10 +26,10 @@ impl<E: Build> Padding<E> {
     }
 }
 
-impl<E: Build> Build for Padding<E> {
+impl<E: BuildElem> BuildElem for Padding<E> {
     type Elem = PaddingElem<E::Elem>;
 
-    fn build(self, cx: &mut Context) -> Self::Elem {
+    fn build(self, cx: &mut ElemContext) -> Self::Elem {
         PaddingElem {
             padding_x: self.padding_x,
             padding_y: self.padding_y,
@@ -37,7 +37,7 @@ impl<E: Build> Build for Padding<E> {
         }
     }
 
-    fn rebuild(self, cx: &mut Context, elem: &mut Self::Elem) {
+    fn rebuild(self, cx: &mut ElemContext, elem: &mut Self::Elem) {
         elem.padding_x = self.padding_x;
         elem.padding_y = self.padding_y;
         self.child.rebuild(cx, &mut elem.child);
@@ -51,29 +51,29 @@ pub struct PaddingElem<E> {
 }
 
 impl<E: Elem> Elem for PaddingElem<E> {
-    fn update(&mut self, cx: &mut Context) {
+    fn update(&mut self, cx: &mut ElemContext) {
         self.child.update(cx);
     }
 
-    fn hit_test(&mut self, cx: &mut Context, point: Point) -> bool {
+    fn hit_test(&mut self, cx: &mut ElemContext, point: Point) -> bool {
         self.child.hit_test(cx, point - Point::new(self.padding_x, self.padding_y))
     }
 
-    fn handle(&mut self, cx: &mut Context, event: &Event) -> Response {
+    fn handle(&mut self, cx: &mut ElemContext, event: &ElemEvent) -> Response {
         self.child.handle(cx, event)
     }
 
-    fn measure(&mut self, cx: &mut Context, proposal: ProposedSize) -> Size {
+    fn measure(&mut self, cx: &mut ElemContext, proposal: ProposedSize) -> Size {
         let proposal = proposal.shrink(2.0 * self.padding_x, 2.0 * self.padding_y);
         let size = self.child.measure(cx, proposal);
         size.grow(2.0 * self.padding_x, 2.0 * self.padding_y)
     }
 
-    fn place(&mut self, cx: &mut Context, size: Size) {
+    fn place(&mut self, cx: &mut ElemContext, size: Size) {
         self.child.place(cx, size.shrink(2.0 * self.padding_x, 2.0 * self.padding_y));
     }
 
-    fn render(&mut self, cx: &mut Context, canvas: &mut Canvas) {
+    fn render(&mut self, cx: &mut ElemContext, canvas: &mut Canvas) {
         let transform = Affine::translate(self.padding_x, self.padding_y);
         canvas.with_transform(transform, |canvas| {
             self.child.render(cx, canvas);

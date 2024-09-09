@@ -1,8 +1,8 @@
 use reflector::elems::{Button, Row, Text};
 use reflector::graphics::Font;
-use reflector::{App, Build, Size, WindowOptions};
+use reflector::{App, BuildElem, Size, WindowOptions};
 
-fn build() -> impl Build {
+fn build() -> impl BuildElem {
     let font = Font::from_bytes(
         include_bytes!("../reflector-graphics/examples/res/SourceSansPro-Regular.otf"),
         0,

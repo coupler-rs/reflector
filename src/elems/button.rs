@@ -1,6 +1,6 @@
 use graphics::{Affine, Canvas, Color, Path};
 
-use crate::{Build, Context, Elem, Event, Point, ProposedSize, Response, Size};
+use crate::{BuildElem, Elem, ElemContext, ElemEvent, Point, ProposedSize, Response, Size};
 
 pub struct Button<E, F> {
     label: E,
@@ -25,14 +25,14 @@ impl<E, F> Button<E, F> {
     }
 }
 
-impl<E, F> Build for Button<E, F>
+impl<E, F> BuildElem for Button<E, F>
 where
-    E: Build,
+    E: BuildElem,
     F: FnMut() + 'static,
 {
     type Elem = ButtonElem<E::Elem, F>;
 
-    fn build(self, cx: &mut Context) -> Self::Elem {
+    fn build(self, cx: &mut ElemContext) -> Self::Elem {
         ButtonElem {
             label: self.label.build(cx),
             action: self.action,
@@ -41,7 +41,7 @@ where
         }
     }
 
-    fn rebuild(self, cx: &mut Context, elem: &mut Self::Elem) {
+    fn rebuild(self, cx: &mut ElemContext, elem: &mut Self::Elem) {
         self.label.rebuild(cx, &mut elem.label);
         elem.action = self.action;
     }
@@ -59,23 +59,23 @@ where
     E: Elem,
     F: FnMut() + 'static,
 {
-    fn update(&mut self, cx: &mut Context) {
+    fn update(&mut self, cx: &mut ElemContext) {
         self.label.update(cx);
     }
 
-    fn hit_test(&mut self, _cx: &mut Context, point: Point) -> bool {
+    fn hit_test(&mut self, _cx: &mut ElemContext, point: Point) -> bool {
         point.x >= 0.0 && point.x < self.size.width && point.y >= 0.0 && point.y < self.size.height
     }
 
-    fn handle(&mut self, _cx: &mut Context, event: &Event) -> Response {
+    fn handle(&mut self, _cx: &mut ElemContext, event: &ElemEvent) -> Response {
         match event {
-            Event::MouseEnter => {
+            ElemEvent::MouseEnter => {
                 self.hover = true;
             }
-            Event::MouseExit => {
+            ElemEvent::MouseExit => {
                 self.hover = false;
             }
-            Event::MouseDown(_) => {
+            ElemEvent::MouseDown(_) => {
                 (self.action)();
                 return Response::Capture;
             }
@@ -85,16 +85,16 @@ where
         Response::Ignore
     }
 
-    fn measure(&mut self, cx: &mut Context, proposal: ProposedSize) -> Size {
+    fn measure(&mut self, cx: &mut ElemContext, proposal: ProposedSize) -> Size {
         self.label.measure(cx, proposal)
     }
 
-    fn place(&mut self, cx: &mut Context, size: Size) {
+    fn place(&mut self, cx: &mut ElemContext, size: Size) {
         self.size = size;
         self.label.place(cx, size);
     }
 
-    fn render(&mut self, cx: &mut Context, canvas: &mut Canvas) {
+    fn render(&mut self, cx: &mut ElemContext, canvas: &mut Canvas) {
         let mut rect = Path::new();
         rect.move_to(Point::new(0.0, 0.0));
         rect.line_to(Point::new(0.0, self.size.height));

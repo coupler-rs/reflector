@@ -1,6 +1,6 @@
 use crate::graphics::{Affine, Canvas};
 use crate::list::{Append, BuildItem, BuildList, Concat, EditVec, Empty};
-use crate::{Build, Context, Elem, Event, Point, ProposedSize, Response, Size};
+use crate::{BuildElem, Elem, ElemContext, ElemEvent, Point, ProposedSize, Response, Size};
 
 pub struct Row<L> {
     spacing: f32,
@@ -22,14 +22,14 @@ impl<L> Row<L> {
         self
     }
 
-    pub fn child<E: BuildItem<Context, RowItem>>(self, child: E) -> Row<Append<L, E>> {
+    pub fn child<E: BuildItem<ElemContext, RowItem>>(self, child: E) -> Row<Append<L, E>> {
         Row {
             spacing: self.spacing,
             children: Append(self.children, child),
         }
     }
 
-    pub fn children<M: BuildList<Context, RowItem>>(self, children: M) -> Row<Concat<L, M>> {
+    pub fn children<M: BuildList<ElemContext, RowItem>>(self, children: M) -> Row<Concat<L, M>> {
         Row {
             spacing: self.spacing,
             children: Concat(self.children, children),
@@ -37,8 +37,8 @@ impl<L> Row<L> {
     }
 }
 
-impl<E: Build> BuildItem<Context, RowItem> for E {
-    fn build_item(self, cx: &mut Context) -> RowItem {
+impl<E: BuildElem> BuildItem<ElemContext, RowItem> for E {
+    fn build_item(self, cx: &mut ElemContext) -> RowItem {
         RowItem {
             offset: 0.0,
             hover: false,
@@ -46,19 +46,19 @@ impl<E: Build> BuildItem<Context, RowItem> for E {
         }
     }
 
-    fn rebuild_item(self, cx: &mut Context, item: &mut RowItem) {
+    fn rebuild_item(self, cx: &mut ElemContext, item: &mut RowItem) {
         self.rebuild(cx, item.elem.downcast_mut().unwrap());
     }
 }
 
-impl<L> Build for Row<L>
+impl<L> BuildElem for Row<L>
 where
-    L: BuildList<Context, RowItem>,
+    L: BuildList<ElemContext, RowItem>,
     L::State: 'static,
 {
     type Elem = RowElem<L::State>;
 
-    fn build(self, cx: &mut Context) -> Self::Elem {
+    fn build(self, cx: &mut ElemContext) -> Self::Elem {
         let mut children = Vec::new();
         let list_state = self.children.build_list(cx, &mut EditVec::new(&mut children));
 
@@ -69,7 +69,7 @@ where
         }
     }
 
-    fn rebuild(self, cx: &mut Context, elem: &mut Self::Elem) {
+    fn rebuild(self, cx: &mut ElemContext, elem: &mut Self::Elem) {
         elem.spacing = self.spacing;
         let mut children = EditVec::new(&mut elem.children);
         self.children.rebuild_list(cx, &mut children, &mut elem.list_state);
@@ -89,13 +89,13 @@ pub struct RowElem<L> {
 }
 
 impl<L: 'static> Elem for RowElem<L> {
-    fn update(&mut self, cx: &mut Context) {
+    fn update(&mut self, cx: &mut ElemContext) {
         for child in &mut self.children {
             child.elem.update(cx);
         }
     }
 
-    fn hit_test(&mut self, cx: &mut Context, point: Point) -> bool {
+    fn hit_test(&mut self, cx: &mut ElemContext, point: Point) -> bool {
         for child in self.children.iter_mut().rev() {
             if child.elem.hit_test(cx, point - Point::new(child.offset, 0.0)) {
                 return true;
@@ -105,19 +105,19 @@ impl<L: 'static> Elem for RowElem<L> {
         false
     }
 
-    fn handle(&mut self, cx: &mut Context, event: &Event) -> Response {
+    fn handle(&mut self, cx: &mut ElemContext, event: &ElemEvent) -> Response {
         match event {
-            Event::MouseEnter => {}
-            Event::MouseExit => {
+            ElemEvent::MouseEnter => {}
+            ElemEvent::MouseExit => {
                 for child in &mut self.children {
                     if child.hover {
                         child.hover = false;
-                        child.elem.handle(cx, &Event::MouseExit);
+                        child.elem.handle(cx, &ElemEvent::MouseExit);
                         break;
                     }
                 }
             }
-            Event::MouseMove(pos) => {
+            ElemEvent::MouseMove(pos) => {
                 let mut hover = None;
                 let mut hover_changed = false;
                 for (index, child) in self.children.iter_mut().enumerate().rev() {
@@ -134,7 +134,7 @@ impl<L: 'static> Elem for RowElem<L> {
                     for child in &mut self.children {
                         if child.hover {
                             child.hover = false;
-                            child.elem.handle(cx, &Event::MouseExit);
+                            child.elem.handle(cx, &ElemEvent::MouseExit);
                             break;
                         }
                     }
@@ -144,14 +144,14 @@ impl<L: 'static> Elem for RowElem<L> {
                     let child = &mut self.children[hover];
                     if !child.hover {
                         child.hover = true;
-                        child.elem.handle(cx, &Event::MouseEnter);
+                        child.elem.handle(cx, &ElemEvent::MouseEnter);
                     }
 
                     let pos = *pos - Point::new(child.offset, 0.0);
-                    return child.elem.handle(cx, &Event::MouseMove(pos));
+                    return child.elem.handle(cx, &ElemEvent::MouseMove(pos));
                 }
             }
-            Event::MouseDown(..) | Event::MouseUp(..) | Event::Scroll(..) => {
+            ElemEvent::MouseDown(..) | ElemEvent::MouseUp(..) | ElemEvent::Scroll(..) => {
                 for child in &mut self.children {
                     if child.hover {
                         return child.elem.handle(cx, event);
@@ -163,7 +163,7 @@ impl<L: 'static> Elem for RowElem<L> {
         Response::Ignore
     }
 
-    fn measure(&mut self, cx: &mut Context, proposal: ProposedSize) -> Size {
+    fn measure(&mut self, cx: &mut ElemContext, proposal: ProposedSize) -> Size {
         let proposal = ProposedSize::new(None, proposal.height);
 
         let mut size = Size::new(0.0, 0.0);
@@ -179,7 +179,7 @@ impl<L: 'static> Elem for RowElem<L> {
         size
     }
 
-    fn place(&mut self, cx: &mut Context, size: Size) {
+    fn place(&mut self, cx: &mut ElemContext, size: Size) {
         let proposal = ProposedSize::new(None, Some(size.height));
 
         let mut offset = 0.0;
@@ -193,7 +193,7 @@ impl<L: 'static> Elem for RowElem<L> {
         }
     }
 
-    fn render(&mut self, cx: &mut Context, canvas: &mut Canvas) {
+    fn render(&mut self, cx: &mut ElemContext, canvas: &mut Canvas) {
         for child in &mut self.children {
             let transform = Affine::translate(child.offset, 0.0);
             canvas.with_transform(transform, |canvas| {
