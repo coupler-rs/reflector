@@ -37,12 +37,6 @@ impl<L> Row<L> {
     }
 }
 
-impl AsMut<RowItem> for RowItem {
-    fn as_mut(&mut self) -> &mut RowItem {
-        self
-    }
-}
-
 impl<E: Build> BuildItem<RowItem> for E {
     fn build_item(self, cx: &mut Context) -> RowItem {
         RowItem {
