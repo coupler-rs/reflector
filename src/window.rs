@@ -46,7 +46,7 @@ impl<E: Elem> Handler<E> {
             }
             platform::Event::Close => {
                 cx.window().close();
-                cx.app().exit();
+                cx.event_loop().exit();
             }
             platform::Event::MouseExit => {
                 if self.hover {
@@ -132,7 +132,7 @@ impl WindowOptions {
     {
         let mut handler = Handler::new(root.build(&mut ElemContext {}));
 
-        let window = self.inner.open(app.inner.handle(), move |cx, event| {
+        let window = self.inner.open(app.event_loop.handle(), move |cx, event| {
             handler.handle(cx, event)
         })?;
 
