@@ -2,8 +2,6 @@
 
 use std::ops::{Bound, RangeBounds};
 
-use crate::Context;
-
 pub trait Edit<T> {
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
@@ -128,46 +126,46 @@ where
     }
 }
 
-pub trait BuildList<T> {
+pub trait BuildList<C, T> {
     type State;
 
-    fn build_list(self, cx: &mut Context, list: &mut impl Edit<T>) -> Self::State;
-    fn rebuild_list(self, cx: &mut Context, list: &mut impl Edit<T>, state: &mut Self::State);
+    fn build_list(self, cx: &mut C, list: &mut impl Edit<T>) -> Self::State;
+    fn rebuild_list(self, cx: &mut C, list: &mut impl Edit<T>, state: &mut Self::State);
 }
 
-pub trait BuildItem<T> {
-    fn build_item(self, cx: &mut Context) -> T;
-    fn rebuild_item(self, cx: &mut Context, item: &mut T);
+pub trait BuildItem<C, T> {
+    fn build_item(self, cx: &mut C) -> T;
+    fn rebuild_item(self, cx: &mut C, item: &mut T);
 }
 
 pub struct Empty;
 
-impl<T> BuildList<T> for Empty {
+impl<C, T> BuildList<C, T> for Empty {
     type State = ();
 
-    fn build_list(self, _cx: &mut Context, _list: &mut impl Edit<T>) -> Self::State {
+    fn build_list(self, _cx: &mut C, _list: &mut impl Edit<T>) -> Self::State {
         ()
     }
 
-    fn rebuild_list(self, _cx: &mut Context, _list: &mut impl Edit<T>, _state: &mut Self::State) {}
+    fn rebuild_list(self, _cx: &mut C, _list: &mut impl Edit<T>, _state: &mut Self::State) {}
 }
 
 pub struct Append<L, I>(pub L, pub I);
 
-impl<L, I, T> BuildList<T> for Append<L, I>
+impl<L, I, C, T> BuildList<C, T> for Append<L, I>
 where
-    L: BuildList<T>,
-    I: BuildItem<T>,
+    L: BuildList<C, T>,
+    I: BuildItem<C, T>,
 {
     type State = L::State;
 
-    fn build_list(self, cx: &mut Context, list: &mut impl Edit<T>) -> Self::State {
+    fn build_list(self, cx: &mut C, list: &mut impl Edit<T>) -> Self::State {
         let state = self.0.build_list(cx, list);
         list.push(self.1.build_item(cx));
         state
     }
 
-    fn rebuild_list(self, cx: &mut Context, list: &mut impl Edit<T>, state: &mut Self::State) {
+    fn rebuild_list(self, cx: &mut C, list: &mut impl Edit<T>, state: &mut Self::State) {
         let last = list.len() - 1;
         self.0.rebuild_list(cx, &mut EditRange::new(list, ..last), state);
         self.1.rebuild_item(cx, list.get_mut(last).unwrap());
@@ -182,14 +180,14 @@ pub struct ConcatState<L, M> {
     second: M,
 }
 
-impl<L, M, T> BuildList<T> for Concat<L, M>
+impl<L, M, C, T> BuildList<C, T> for Concat<L, M>
 where
-    L: BuildList<T>,
-    M: BuildList<T>,
+    L: BuildList<C, T>,
+    M: BuildList<C, T>,
 {
     type State = ConcatState<L::State, M::State>;
 
-    fn build_list(self, cx: &mut Context, list: &mut impl Edit<T>) -> Self::State {
+    fn build_list(self, cx: &mut C, list: &mut impl Edit<T>) -> Self::State {
         let first = self.0.build_list(cx, list);
         let split = list.len();
         let second = self.1.build_list(cx, &mut EditRange::new(list, split..));
@@ -201,7 +199,7 @@ where
         }
     }
 
-    fn rebuild_list(self, cx: &mut Context, list: &mut impl Edit<T>, state: &mut Self::State) {
+    fn rebuild_list(self, cx: &mut C, list: &mut impl Edit<T>, state: &mut Self::State) {
         let mut first = EditRange::new(list, ..state.split);
         self.0.rebuild_list(cx, &mut first, &mut state.first);
 
@@ -212,30 +210,30 @@ where
     }
 }
 
-impl<T> BuildList<T> for () {
+impl<C, T> BuildList<C, T> for () {
     type State = ();
 
-    fn build_list(self, _cx: &mut Context, _list: &mut impl Edit<T>) -> Self::State {
+    fn build_list(self, _cx: &mut C, _list: &mut impl Edit<T>) -> Self::State {
         ()
     }
 
-    fn rebuild_list(self, _cx: &mut Context, _list: &mut impl Edit<T>, _state: &mut Self::State) {}
+    fn rebuild_list(self, _cx: &mut C, _list: &mut impl Edit<T>, _state: &mut Self::State) {}
 }
 
 macro_rules! build_list_tuple {
     ($($index:tt $item:ident),*) => {
-        impl<$($item,)* T> BuildList<T> for ($($item,)*)
+        impl<$($item,)* C, T> BuildList<C, T> for ($($item,)*)
         where
-            $($item: BuildItem<T>,)*
+            $($item: BuildItem<C, T>,)*
         {
             type State = ();
 
-            fn build_list(self, cx: &mut Context, list: &mut impl Edit<T>) -> Self::State {
+            fn build_list(self, cx: &mut C, list: &mut impl Edit<T>) -> Self::State {
                 $(list.push(self.$index.build_item(cx));)*
                 ()
             }
 
-            fn rebuild_list(self, cx: &mut Context, list: &mut impl Edit<T>, _state: &mut Self::State) {
+            fn rebuild_list(self, cx: &mut C, list: &mut impl Edit<T>, _state: &mut Self::State) {
                 $(self.$index.rebuild_item(cx, list.get_mut($index).unwrap());)*
             }
         }
@@ -255,13 +253,13 @@ build_list_tuple!(0 T0, 1 T1, 2 T2, 3 T3, 4 T4, 5 T5, 6 T6, 7 T7, 8 T8, 9 T9);
 build_list_tuple!(0 T0, 1 T1, 2 T2, 3 T3, 4 T4, 5 T5, 6 T6, 7 T7, 8 T8, 9 T9, 10 T10);
 build_list_tuple!(0 T0, 1 T1, 2 T2, 3 T3, 4 T4, 5 T5, 6 T6, 7 T7, 8 T8, 9 T9, 10 T10, 11 T11);
 
-impl<B, T> BuildList<T> for Option<B>
+impl<B, C, T> BuildList<C, T> for Option<B>
 where
-    B: BuildItem<T>,
+    B: BuildItem<C, T>,
 {
     type State = ();
 
-    fn build_list(self, cx: &mut Context, list: &mut impl Edit<T>) -> Self::State {
+    fn build_list(self, cx: &mut C, list: &mut impl Edit<T>) -> Self::State {
         if let Some(builder) = self {
             list.push(builder.build_item(cx));
         }
@@ -269,7 +267,7 @@ where
         ()
     }
 
-    fn rebuild_list(self, cx: &mut Context, list: &mut impl Edit<T>, _state: &mut Self::State) {
+    fn rebuild_list(self, cx: &mut C, list: &mut impl Edit<T>, _state: &mut Self::State) {
         #[allow(clippy::collapsible_else_if)]
         if let Some(builder) = self {
             if let Some(item) = list.get_mut(0) {

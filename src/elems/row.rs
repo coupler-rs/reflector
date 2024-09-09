@@ -22,14 +22,14 @@ impl<L> Row<L> {
         self
     }
 
-    pub fn child<E: BuildItem<RowItem>>(self, child: E) -> Row<Append<L, E>> {
+    pub fn child<E: BuildItem<Context, RowItem>>(self, child: E) -> Row<Append<L, E>> {
         Row {
             spacing: self.spacing,
             children: Append(self.children, child),
         }
     }
 
-    pub fn children<M: BuildList<RowItem>>(self, children: M) -> Row<Concat<L, M>> {
+    pub fn children<M: BuildList<Context, RowItem>>(self, children: M) -> Row<Concat<L, M>> {
         Row {
             spacing: self.spacing,
             children: Concat(self.children, children),
@@ -37,7 +37,7 @@ impl<L> Row<L> {
     }
 }
 
-impl<E: Build> BuildItem<RowItem> for E {
+impl<E: Build> BuildItem<Context, RowItem> for E {
     fn build_item(self, cx: &mut Context) -> RowItem {
         RowItem {
             offset: 0.0,
@@ -53,7 +53,7 @@ impl<E: Build> BuildItem<RowItem> for E {
 
 impl<L> Build for Row<L>
 where
-    L: BuildList<RowItem>,
+    L: BuildList<Context, RowItem>,
     L::State: 'static,
 {
     type Elem = RowElem<L::State>;
