@@ -3,6 +3,7 @@ pub extern crate reflector_graphics as graphics;
 #[doc(inline)]
 pub extern crate reflector_platform as platform;
 
+mod any;
 mod app;
 mod elem;
 mod error;
@@ -12,8 +13,9 @@ mod window;
 pub mod elems;
 pub mod list;
 
+pub use any::AsAny;
 pub use app::{App, AppOptions};
-pub use elem::{AsAny, Build, Context, Elem, Event, Response};
+pub use elem::{Build, Context, Elem, Event, Response};
 pub use error::{Error, Result};
 pub use geom::{Point, ProposedSize, Size};
 pub use window::{Window, WindowOptions};

@@ -3,7 +3,7 @@ use std::any::Any;
 use graphics::Canvas;
 pub use platform::MouseButton;
 
-use crate::{Point, ProposedSize, Size};
+use crate::{AsAny, Point, ProposedSize, Size};
 
 pub struct Context {}
 
@@ -28,21 +28,6 @@ pub trait Build {
 
     fn build(self, cx: &mut Context) -> Self::Elem;
     fn rebuild(self, cx: &mut Context, elem: &mut Self::Elem);
-}
-
-pub trait AsAny: Any {
-    fn as_any(&self) -> &dyn Any;
-    fn as_mut_any(&mut self) -> &mut dyn Any;
-}
-
-impl<T: Any> AsAny for T {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_mut_any(&mut self) -> &mut dyn Any {
-        self
-    }
 }
 
 pub trait Elem: AsAny {
