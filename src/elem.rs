@@ -23,13 +23,6 @@ pub enum Response {
     Ignore,
 }
 
-pub trait Build {
-    type Elem: Elem;
-
-    fn build(self, cx: &mut Context) -> Self::Elem;
-    fn rebuild(self, cx: &mut Context, elem: &mut Self::Elem);
-}
-
 pub trait Elem: AsAny {
     fn update(&mut self, cx: &mut Context);
     fn hit_test(&mut self, cx: &mut Context, point: Point) -> bool;
