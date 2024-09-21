@@ -1,8 +1,8 @@
-pub use crate::{Context, Elem};
+pub use crate::Elem;
 
 pub trait Build {
     type Elem: Elem;
 
-    fn build(self, cx: &mut Context) -> Self::Elem;
-    fn rebuild(self, cx: &mut Context, elem: &mut Self::Elem);
+    fn build(self) -> Self::Elem;
+    fn rebuild(self, elem: &mut Self::Elem);
 }

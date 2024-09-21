@@ -23,7 +23,7 @@ where
 {
     type Elem = TextElem;
 
-    fn build(self, _cx: &mut Context) -> Self::Elem {
+    fn build(self) -> Self::Elem {
         let text = self.text.as_ref().to_owned();
         let layout = TextLayout::new(&text, &self.font, self.size);
 
@@ -35,7 +35,7 @@ where
         }
     }
 
-    fn rebuild(self, _cx: &mut Context, elem: &mut Self::Elem) {
+    fn rebuild(self, elem: &mut Self::Elem) {
         elem.text.clear();
         elem.text.push_str(self.text.as_ref());
         elem.font = self.font;

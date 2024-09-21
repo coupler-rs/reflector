@@ -130,7 +130,7 @@ impl WindowOptions {
         B: Build,
         B::Elem: 'static,
     {
-        let mut handler = Handler::new(root.build(&mut Context {}));
+        let mut handler = Handler::new(root.build());
 
         let window = self.inner.open(app.inner.handle(), move |cx, event| {
             handler.handle(cx, event)

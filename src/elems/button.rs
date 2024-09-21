@@ -32,17 +32,17 @@ where
 {
     type Elem = ButtonElem<E::Elem, F>;
 
-    fn build(self, cx: &mut Context) -> Self::Elem {
+    fn build(self) -> Self::Elem {
         ButtonElem {
-            label: self.label.build(cx),
+            label: self.label.build(),
             action: self.action,
             size: Size::new(0.0, 0.0),
             hover: false,
         }
     }
 
-    fn rebuild(self, cx: &mut Context, elem: &mut Self::Elem) {
-        self.label.rebuild(cx, &mut elem.label);
+    fn rebuild(self, elem: &mut Self::Elem) {
+        self.label.rebuild(&mut elem.label);
         elem.action = self.action;
     }
 }

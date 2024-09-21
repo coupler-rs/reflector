@@ -29,18 +29,18 @@ impl<E: Build> Padding<E> {
 impl<E: Build> Build for Padding<E> {
     type Elem = PaddingElem<E::Elem>;
 
-    fn build(self, cx: &mut Context) -> Self::Elem {
+    fn build(self) -> Self::Elem {
         PaddingElem {
             padding_x: self.padding_x,
             padding_y: self.padding_y,
-            child: self.child.build(cx),
+            child: self.child.build(),
         }
     }
 
-    fn rebuild(self, cx: &mut Context, elem: &mut Self::Elem) {
+    fn rebuild(self, elem: &mut Self::Elem) {
         elem.padding_x = self.padding_x;
         elem.padding_y = self.padding_y;
-        self.child.rebuild(cx, &mut elem.child);
+        self.child.rebuild(&mut elem.child);
     }
 }
 

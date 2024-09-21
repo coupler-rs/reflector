@@ -38,16 +38,16 @@ impl<L> Row<L> {
 }
 
 impl<E: Build> BuildItem<RowItem> for E {
-    fn build_item(self, cx: &mut Context) -> RowItem {
+    fn build_item(self) -> RowItem {
         RowItem {
             offset: 0.0,
             hover: false,
-            elem: Box::new(self.build(cx)),
+            elem: Box::new(self.build()),
         }
     }
 
-    fn rebuild_item(self, cx: &mut Context, item: &mut RowItem) {
-        self.rebuild(cx, item.elem.downcast_mut().unwrap());
+    fn rebuild_item(self, item: &mut RowItem) {
+        self.rebuild(item.elem.downcast_mut().unwrap());
     }
 }
 
@@ -58,9 +58,9 @@ where
 {
     type Elem = RowElem<L::State>;
 
-    fn build(self, cx: &mut Context) -> Self::Elem {
+    fn build(self) -> Self::Elem {
         let mut children = Vec::new();
-        let list_state = self.children.build_list(cx, &mut EditVec::new(&mut children));
+        let list_state = self.children.build_list(&mut EditVec::new(&mut children));
 
         RowElem {
             spacing: self.spacing,
@@ -69,10 +69,10 @@ where
         }
     }
 
-    fn rebuild(self, cx: &mut Context, elem: &mut Self::Elem) {
+    fn rebuild(self, elem: &mut Self::Elem) {
         elem.spacing = self.spacing;
         let mut children = EditVec::new(&mut elem.children);
-        self.children.rebuild_list(cx, &mut children, &mut elem.list_state);
+        self.children.rebuild_list(&mut children, &mut elem.list_state);
     }
 }
 
