@@ -1,6 +1,6 @@
 use graphics::{Affine, Canvas, Color, Path};
 
-use crate::{Build, Context, Elem, Event, Point, ProposedSize, Response, Size};
+use crate::{AsAny, Build, Context, Elem, Event, Point, ProposedSize, Response, Size};
 
 pub struct Button<E, F> {
     label: E,
@@ -30,35 +30,44 @@ where
     E: Build,
     F: FnMut() + 'static,
 {
-    type Elem = ButtonElem<E::Elem, F>;
+    type Elem = ButtonElem;
 
     fn build(self) -> Self::Elem {
         ButtonElem {
-            label: self.label.build(),
-            action: self.action,
+            label: Box::new(self.label.build()),
+            action: Box::new(self.action),
             size: Size::new(0.0, 0.0),
             hover: false,
         }
     }
 
     fn rebuild(self, elem: &mut Self::Elem) {
-        self.label.rebuild(&mut elem.label);
-        elem.action = self.action;
+        if let Some(label) = elem.label.downcast_mut() {
+            self.label.rebuild(label);
+        } else {
+            elem.label = Box::new(self.label.build());
+        }
+
+        if let Some(action) = elem.action.as_mut_any().downcast_mut() {
+            *action = self.action;
+        } else {
+            elem.action = Box::new(self.action);
+        }
     }
 }
 
-pub struct ButtonElem<E, F> {
-    label: E,
-    action: F,
+trait Action: FnMut() + AsAny {}
+
+impl<T: FnMut() + AsAny> Action for T {}
+
+pub struct ButtonElem {
+    label: Box<dyn Elem>,
+    action: Box<dyn Action>,
     size: Size,
     hover: bool,
 }
 
-impl<E, F> Elem for ButtonElem<E, F>
-where
-    E: Elem,
-    F: FnMut() + 'static,
-{
+impl Elem for ButtonElem {
     fn update(&mut self, cx: &mut Context) {
         self.label.update(cx);
     }
