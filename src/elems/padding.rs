@@ -27,30 +27,35 @@ impl<E: Build> Padding<E> {
 }
 
 impl<E: Build> Build for Padding<E> {
-    type Elem = PaddingElem<E::Elem>;
+    type Elem = PaddingElem;
 
     fn build(self) -> Self::Elem {
         PaddingElem {
             padding_x: self.padding_x,
             padding_y: self.padding_y,
-            child: self.child.build(),
+            child: Box::new(self.child.build()),
         }
     }
 
     fn rebuild(self, elem: &mut Self::Elem) {
         elem.padding_x = self.padding_x;
         elem.padding_y = self.padding_y;
-        self.child.rebuild(&mut elem.child);
+
+        if let Some(child) = elem.child.downcast_mut() {
+            self.child.rebuild(child);
+        } else {
+            elem.child = Box::new(self.child.build());
+        }
     }
 }
 
-pub struct PaddingElem<E> {
+pub struct PaddingElem {
     padding_x: f32,
     padding_y: f32,
-    child: E,
+    child: Box<dyn Elem>,
 }
 
-impl<E: Elem> Elem for PaddingElem<E> {
+impl Elem for PaddingElem {
     fn update(&mut self, cx: &mut Context) {
         self.child.update(cx);
     }
