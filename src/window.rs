@@ -1,7 +1,8 @@
 use graphics::{Affine, Color, Renderer};
 use platform::{Bitmap, RawWindow, WindowContext};
 
-use crate::{App, Build, Context, Elem, Event, Point, ProposedSize, Result, Size};
+use crate::elem::{Context, Elem, Event};
+use crate::{App, Build, Point, ProposedSize, Result, Size};
 
 struct Handler<E> {
     renderer: Renderer,

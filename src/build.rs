@@ -1,4 +1,4 @@
-pub use crate::Elem;
+pub use crate::elem::Elem;
 
 pub trait Build {
     type Elem: Elem;

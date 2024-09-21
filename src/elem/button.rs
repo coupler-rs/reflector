@@ -1,6 +1,7 @@
 use graphics::{Affine, Canvas, Color, Path};
 
-use crate::{AsAny, Build, Context, Elem, Event, Point, ProposedSize, Response, Size};
+use super::{Context, Elem, Event, Response};
+use crate::{AsAny, Build, Point, ProposedSize, Size};
 
 pub struct Button<E, F> {
     label: E,

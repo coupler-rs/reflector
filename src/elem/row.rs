@@ -1,8 +1,9 @@
 use std::any::Any;
 
+use super::{Context, Elem, Event, Response};
 use crate::graphics::{Affine, Canvas};
 use crate::list::{Append, BuildItem, BuildList, Concat, EditVec, Empty};
-use crate::{Build, Context, Elem, Event, Point, ProposedSize, Response, Size};
+use crate::{Build, Point, ProposedSize, Size};
 
 pub struct Row<L> {
     spacing: f32,

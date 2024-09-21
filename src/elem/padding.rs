@@ -1,6 +1,7 @@
 use graphics::{Affine, Canvas};
 
-use crate::{Build, Context, Elem, Event, Point, ProposedSize, Response, Size};
+use super::{Context, Elem, Event, Response};
+use crate::{Build, Point, ProposedSize, Size};
 
 pub struct Padding<E> {
     padding_x: f32,
