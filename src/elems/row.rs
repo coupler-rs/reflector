@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use crate::graphics::{Affine, Canvas};
 use crate::list::{Append, BuildItem, BuildList, Concat, EditVec, Empty};
 use crate::{Build, Context, Elem, Event, Point, ProposedSize, Response, Size};
@@ -56,7 +58,7 @@ where
     L: BuildList<RowItem>,
     L::State: 'static,
 {
-    type Elem = RowElem<L::State>;
+    type Elem = RowElem;
 
     fn build(self) -> Self::Elem {
         let mut children = Vec::new();
@@ -64,15 +66,23 @@ where
 
         RowElem {
             spacing: self.spacing,
-            list_state,
+            list_state: Box::new(list_state),
             children,
         }
     }
 
     fn rebuild(self, elem: &mut Self::Elem) {
         elem.spacing = self.spacing;
-        let mut children = EditVec::new(&mut elem.children);
-        self.children.rebuild_list(&mut children, &mut elem.list_state);
+
+        if let Some(list_state) = elem.list_state.downcast_mut() {
+            let mut children = EditVec::new(&mut elem.children);
+            self.children.rebuild_list(&mut children, list_state);
+        } else {
+            let mut children = Vec::new();
+            let list_state = self.children.build_list(&mut EditVec::new(&mut children));
+            elem.list_state = Box::new(list_state);
+            elem.children = children;
+        }
     }
 }
 
@@ -82,13 +92,13 @@ pub struct RowItem {
     elem: Box<dyn Elem>,
 }
 
-pub struct RowElem<L> {
+pub struct RowElem {
     spacing: f32,
-    list_state: L,
+    list_state: Box<dyn Any>,
     children: Vec<RowItem>,
 }
 
-impl<L: 'static> Elem for RowElem<L> {
+impl Elem for RowElem {
     fn update(&mut self, cx: &mut Context) {
         for child in &mut self.children {
             child.elem.update(cx);
