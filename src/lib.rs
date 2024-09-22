@@ -11,7 +11,6 @@ mod window;
 
 pub mod build;
 pub mod elem;
-pub mod list;
 
 pub use any::AsAny;
 pub use app::{App, AppOptions};

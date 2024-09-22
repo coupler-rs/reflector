@@ -1,7 +1,7 @@
+use super::list::{Append, BuildItem, BuildList, Concat, EditVec, Empty};
 use super::Build;
 use crate::elem;
 use crate::elem::RowItem;
-use crate::list::{Append, BuildItem, BuildList, Concat, EditVec, Empty};
 
 pub struct Row<L> {
     spacing: f32,
