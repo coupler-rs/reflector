@@ -1,62 +1,56 @@
 use graphics::{Affine, Canvas};
 
 use super::{Context, Elem, Event, Response};
-use crate::{Build, Point, ProposedSize, Size};
+use crate::{Point, ProposedSize, Size};
 
-pub struct Padding<E> {
-    padding_x: f32,
-    padding_y: f32,
-    child: E,
-}
-
-impl<E: Build> Padding<E> {
-    pub fn new(padding: f32, child: E) -> Padding<E> {
-        Padding {
-            padding_x: padding,
-            padding_y: padding,
-            child,
-        }
-    }
-
-    pub fn new_xy(padding_x: f32, padding_y: f32, child: E) -> Padding<E> {
-        Padding {
-            padding_x,
-            padding_y,
-            child,
-        }
-    }
-}
-
-impl<E: Build> Build for Padding<E> {
-    type Elem = PaddingElem;
-
-    fn build(self) -> Self::Elem {
-        PaddingElem {
-            padding_x: self.padding_x,
-            padding_y: self.padding_y,
-            child: Box::new(self.child.build()),
-        }
-    }
-
-    fn rebuild(self, elem: &mut Self::Elem) {
-        elem.padding_x = self.padding_x;
-        elem.padding_y = self.padding_y;
-
-        if let Some(child) = elem.child.downcast_mut() {
-            self.child.rebuild(child);
-        } else {
-            elem.child = Box::new(self.child.build());
-        }
-    }
-}
-
-pub struct PaddingElem {
+pub struct Padding {
     padding_x: f32,
     padding_y: f32,
     child: Box<dyn Elem>,
 }
 
-impl Elem for PaddingElem {
+impl Padding {
+    pub fn new<E>(padding: f32, child: E) -> Padding
+    where
+        E: Elem,
+    {
+        Self::new_xy(padding, padding, child)
+    }
+
+    pub fn new_xy<E>(padding_x: f32, padding_y: f32, child: E) -> Padding
+    where
+        E: Elem,
+    {
+        Padding {
+            padding_x,
+            padding_y,
+            child: Box::new(child),
+        }
+    }
+
+    pub fn set_padding(&mut self, padding: f32) {
+        self.padding_x = padding;
+        self.padding_y = padding;
+    }
+
+    pub fn set_padding_xy(&mut self, padding_x: f32, padding_y: f32) {
+        self.padding_x = padding_x;
+        self.padding_y = padding_y;
+    }
+
+    pub fn set_child<E>(&mut self, child: E)
+    where
+        E: Elem,
+    {
+        self.child = Box::new(child);
+    }
+
+    pub fn child_mut(&mut self) -> &mut dyn Elem {
+        &mut *self.child
+    }
+}
+
+impl Elem for Padding {
     fn update(&mut self, cx: &mut Context) {
         self.child.update(cx);
     }

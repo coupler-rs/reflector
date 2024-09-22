@@ -1,57 +1,50 @@
 use graphics::{Affine, Canvas, Color, Font, TextLayout};
 
 use super::{Context, Elem, Event, Response};
-use crate::{Build, Point, ProposedSize, Size};
+use crate::{Point, ProposedSize, Size};
 
-pub struct Text<T> {
-    text: T,
-    font: Font,
-    size: f32,
-}
-
-impl<T> Text<T>
-where
-    T: AsRef<str>,
-{
-    pub fn new(text: T, font: Font, size: f32) -> Text<T> {
-        Text { text, font, size }
-    }
-}
-
-impl<T> Build for Text<T>
-where
-    T: AsRef<str>,
-{
-    type Elem = TextElem;
-
-    fn build(self) -> Self::Elem {
-        let text = self.text.as_ref().to_owned();
-        let layout = TextLayout::new(&text, &self.font, self.size);
-
-        TextElem {
-            text,
-            font: self.font,
-            size: self.size,
-            layout,
-        }
-    }
-
-    fn rebuild(self, elem: &mut Self::Elem) {
-        elem.text.clear();
-        elem.text.push_str(self.text.as_ref());
-        elem.font = self.font;
-        elem.size = self.size;
-    }
-}
-
-pub struct TextElem {
+pub struct Text {
     text: String,
     font: Font,
     size: f32,
     layout: TextLayout,
 }
 
-impl Elem for TextElem {
+impl Text {
+    pub fn new<T>(text: T, font: Font, size: f32) -> Text
+    where
+        T: AsRef<str>,
+    {
+        let text = text.as_ref().to_owned();
+        let layout = TextLayout::new(&text, &font, size);
+
+        Text {
+            text,
+            font,
+            size,
+            layout,
+        }
+    }
+
+    pub fn set_text<T>(&mut self, text: T)
+    where
+        T: AsRef<str>,
+    {
+        self.text.clear();
+        self.text.push_str(text.as_ref());
+        self.layout = TextLayout::new(&self.text, &self.font, self.size);
+    }
+
+    pub fn set_font(&mut self, font: Font) {
+        self.font = font;
+    }
+
+    pub fn set_size(&mut self, size: f32) {
+        self.size = size;
+    }
+}
+
+impl Elem for Text {
     fn update(&mut self, _cx: &mut Context) {}
 
     fn hit_test(&mut self, _cx: &mut Context, point: Point) -> bool {
