@@ -1,62 +1,15 @@
 use graphics::{Affine, Canvas};
 
 use super::{Context, Elem, Event, Response};
-use crate::{Build, Point, ProposedSize, Size};
+use crate::{Point, ProposedSize, Size};
 
-pub struct Padding<E> {
-    padding_x: f32,
-    padding_y: f32,
-    child: E,
+pub struct Padding {
+    pub(crate) padding_x: f32,
+    pub(crate) padding_y: f32,
+    pub(crate) child: Box<dyn Elem>,
 }
 
-impl<E: Build> Padding<E> {
-    pub fn new(padding: f32, child: E) -> Padding<E> {
-        Padding {
-            padding_x: padding,
-            padding_y: padding,
-            child,
-        }
-    }
-
-    pub fn new_xy(padding_x: f32, padding_y: f32, child: E) -> Padding<E> {
-        Padding {
-            padding_x,
-            padding_y,
-            child,
-        }
-    }
-}
-
-impl<E: Build> Build for Padding<E> {
-    type Elem = PaddingElem;
-
-    fn build(self) -> Self::Elem {
-        PaddingElem {
-            padding_x: self.padding_x,
-            padding_y: self.padding_y,
-            child: Box::new(self.child.build()),
-        }
-    }
-
-    fn rebuild(self, elem: &mut Self::Elem) {
-        elem.padding_x = self.padding_x;
-        elem.padding_y = self.padding_y;
-
-        if let Some(child) = elem.child.downcast_mut() {
-            self.child.rebuild(child);
-        } else {
-            elem.child = Box::new(self.child.build());
-        }
-    }
-}
-
-pub struct PaddingElem {
-    padding_x: f32,
-    padding_y: f32,
-    child: Box<dyn Elem>,
-}
-
-impl Elem for PaddingElem {
+impl Elem for Padding {
     fn update(&mut self, cx: &mut Context) {
         self.child.update(cx);
     }

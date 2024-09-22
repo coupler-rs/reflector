@@ -1,6 +1,6 @@
-use reflector::elem::{Button, Row, Text};
+use reflector::build::{Build, Button, Row, Text};
 use reflector::graphics::Font;
-use reflector::{App, Build, Size, WindowOptions};
+use reflector::{App, Size, WindowOptions};
 
 fn build() -> impl Build {
     let font = Font::from_bytes(

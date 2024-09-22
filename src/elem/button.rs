@@ -1,74 +1,20 @@
 use graphics::{Affine, Canvas, Color, Path};
 
 use super::{Context, Elem, Event, Response};
-use crate::{AsAny, Build, Point, ProposedSize, Size};
+use crate::{AsAny, Point, ProposedSize, Size};
 
-pub struct Button<E, F> {
-    label: E,
-    action: F,
-}
-
-impl<E> Button<E, ()> {
-    pub fn new(label: E) -> Button<E, impl FnMut()> {
-        Button {
-            label,
-            action: || {},
-        }
-    }
-}
-
-impl<E, F> Button<E, F> {
-    pub fn action<G: FnMut()>(self, action: G) -> Button<E, G> {
-        Button {
-            label: self.label,
-            action,
-        }
-    }
-}
-
-impl<E, F> Build for Button<E, F>
-where
-    E: Build,
-    F: FnMut() + 'static,
-{
-    type Elem = ButtonElem;
-
-    fn build(self) -> Self::Elem {
-        ButtonElem {
-            label: Box::new(self.label.build()),
-            action: Box::new(self.action),
-            size: Size::new(0.0, 0.0),
-            hover: false,
-        }
-    }
-
-    fn rebuild(self, elem: &mut Self::Elem) {
-        if let Some(label) = elem.label.downcast_mut() {
-            self.label.rebuild(label);
-        } else {
-            elem.label = Box::new(self.label.build());
-        }
-
-        if let Some(action) = elem.action.as_mut_any().downcast_mut() {
-            *action = self.action;
-        } else {
-            elem.action = Box::new(self.action);
-        }
-    }
-}
-
-trait Action: FnMut() + AsAny {}
+pub(crate) trait Action: FnMut() + AsAny {}
 
 impl<T: FnMut() + AsAny> Action for T {}
 
-pub struct ButtonElem {
-    label: Box<dyn Elem>,
-    action: Box<dyn Action>,
-    size: Size,
-    hover: bool,
+pub struct Button {
+    pub(crate) label: Box<dyn Elem>,
+    pub(crate) action: Box<dyn Action>,
+    pub(crate) size: Size,
+    pub(crate) hover: bool,
 }
 
-impl Elem for ButtonElem {
+impl Elem for Button {
     fn update(&mut self, cx: &mut Context) {
         self.label.update(cx);
     }

@@ -12,7 +12,7 @@ mod text;
 
 pub use button::Button;
 pub use padding::Padding;
-pub use row::Row;
+pub use row::{Row, RowItem};
 pub use text::Text;
 
 pub struct Context {}

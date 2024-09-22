@@ -1,57 +1,16 @@
 use graphics::{Affine, Canvas, Color, Font, TextLayout};
 
 use super::{Context, Elem, Event, Response};
-use crate::{Build, Point, ProposedSize, Size};
+use crate::{Point, ProposedSize, Size};
 
-pub struct Text<T> {
-    text: T,
-    font: Font,
-    size: f32,
+pub struct Text {
+    pub(crate) text: String,
+    pub(crate) font: Font,
+    pub(crate) size: f32,
+    pub(crate) layout: TextLayout,
 }
 
-impl<T> Text<T>
-where
-    T: AsRef<str>,
-{
-    pub fn new(text: T, font: Font, size: f32) -> Text<T> {
-        Text { text, font, size }
-    }
-}
-
-impl<T> Build for Text<T>
-where
-    T: AsRef<str>,
-{
-    type Elem = TextElem;
-
-    fn build(self) -> Self::Elem {
-        let text = self.text.as_ref().to_owned();
-        let layout = TextLayout::new(&text, &self.font, self.size);
-
-        TextElem {
-            text,
-            font: self.font,
-            size: self.size,
-            layout,
-        }
-    }
-
-    fn rebuild(self, elem: &mut Self::Elem) {
-        elem.text.clear();
-        elem.text.push_str(self.text.as_ref());
-        elem.font = self.font;
-        elem.size = self.size;
-    }
-}
-
-pub struct TextElem {
-    text: String,
-    font: Font,
-    size: f32,
-    layout: TextLayout,
-}
-
-impl Elem for TextElem {
+impl Elem for Text {
     fn update(&mut self, _cx: &mut Context) {}
 
     fn hit_test(&mut self, _cx: &mut Context, point: Point) -> bool {
