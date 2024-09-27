@@ -39,6 +39,7 @@ where
     fn rebuild(self, elem: &mut Self::Elem) {
         elem.text.clear();
         elem.text.push_str(self.text.as_ref());
+        elem.layout = TextLayout::new(&elem.text, &self.font, self.size);
         elem.font = self.font;
         elem.size = self.size;
     }
