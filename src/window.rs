@@ -1,7 +1,6 @@
 use graphics::{Affine, Color, Renderer};
 use platform::{Bitmap, RawWindow, WindowContext};
 
-use crate::build::Build;
 use crate::elem::{Context, Elem, Event};
 use crate::{App, Point, ProposedSize, Result, Size};
 
@@ -127,12 +126,11 @@ impl WindowOptions {
         self
     }
 
-    pub fn open<B>(&self, app: &App, root: B) -> Result<Window>
+    pub fn open<E>(&self, app: &App, root: E) -> Result<Window>
     where
-        B: Build,
-        B::Elem: 'static,
+        E: Elem,
     {
-        let mut handler = Handler::new(root.build());
+        let mut handler = Handler::new(root);
 
         let window = self.inner.open(app.inner.handle(), move |cx, event| {
             handler.handle(cx, event)
