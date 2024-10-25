@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use reflector_platform::{
     App, AppMode, AppOptions, Bitmap, Event, Point, Response, Size, WindowOptions,
 };
@@ -9,7 +11,7 @@ fn main() {
         .title("parent window")
         .size(Size::new(512.0, 512.0))
         .open(parent_app.handle(), {
-            let mut framebuffer = Vec::new();
+            let framebuffer = RefCell::new(Vec::new());
             move |cx, event| {
                 match event {
                     Event::Frame => {
@@ -17,6 +19,8 @@ fn main() {
                         let size = cx.window().size();
                         let width = (scale * size.width) as usize;
                         let height = (scale * size.height) as usize;
+
+                        let mut framebuffer = framebuffer.borrow_mut();
                         framebuffer.resize(width * height, 0xFF00FFFF);
                         cx.window().present(Bitmap::new(&framebuffer, width, height));
                     }
@@ -41,7 +45,7 @@ fn main() {
         .position(Point::new(128.0, 128.0))
         .size(Size::new(256.0, 256.0))
         .open(child_app.handle(), {
-            let mut framebuffer = Vec::new();
+            let framebuffer = RefCell::new(Vec::new());
             move |cx, event| {
                 match event {
                     Event::Frame => {
@@ -49,6 +53,8 @@ fn main() {
                         let size = cx.window().size();
                         let width = (scale * size.width) as usize;
                         let height = (scale * size.height) as usize;
+
+                        let mut framebuffer = framebuffer.borrow_mut();
                         framebuffer.resize(width * height, 0xFFFF00FF);
                         cx.window().present(Bitmap::new(&framebuffer, width, height));
                     }

@@ -104,7 +104,7 @@ impl VsyncThreads {
                 if let Some(window_state) = window_state {
                     let window = Window::from_inner(WindowInner::from_state(window_state));
                     let cx = WindowContext::new(app, &window);
-                    window.inner.state.handle_event(&cx, Event::Frame);
+                    (window.inner.state.handler)(&cx, Event::Frame);
                 }
             }
         }

@@ -38,7 +38,7 @@ pub struct WindowState {
     pub present_state: RefCell<Option<PresentState>>,
     pub expose_rects: RefCell<Vec<Rect>>,
     pub app: AppHandle,
-    pub handler: RefCell<Box<dyn FnMut(&WindowContext, Event) -> Response>>,
+    pub handler: Box<dyn Fn(&WindowContext, Event) -> Response>,
 }
 
 impl WindowState {
@@ -132,7 +132,7 @@ impl WindowInner {
 
     pub fn open<H>(options: &WindowOptions, app: &AppHandle, handler: H) -> Result<WindowInner>
     where
-        H: FnMut(&WindowContext, Event) -> Response + 'static,
+        H: Fn(&WindowContext, Event) -> Response + 'static,
     {
         if !app.inner.state.open.get() {
             return Err(Error::AppDropped);
@@ -235,7 +235,7 @@ impl WindowInner {
             present_state: RefCell::new(present_state),
             expose_rects: RefCell::new(Vec::new()),
             app: AppHandle::from_inner(AppInner::from_state(Rc::clone(&app_state))),
-            handler: RefCell::new(Box::new(handler)),
+            handler: Box::new(handler),
         });
 
         app_state.windows.borrow_mut().insert(window_id, Rc::clone(&state));

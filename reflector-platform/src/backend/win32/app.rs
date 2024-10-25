@@ -210,7 +210,7 @@ impl AppInner {
 
     pub fn set_timer<H>(&self, duration: Duration, handler: H) -> Result<TimerInner>
     where
-        H: FnMut(&TimerContext) + 'static,
+        H: Fn(&TimerContext) + 'static,
     {
         if !self.state.open.get() {
             return Err(Error::AppDropped);

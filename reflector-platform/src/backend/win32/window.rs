@@ -1,5 +1,5 @@
 use std::alloc::{alloc, dealloc, Layout};
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::ffi::{c_int, c_void};
 use std::mem::MaybeUninit;
 use std::panic::{self, AssertUnwindSafe};
@@ -157,17 +157,16 @@ pub unsafe extern "system" fn wnd_proc(
                 }
                 gdi::DeleteObject(rgn);
 
-                // Only validate the dirty region if we successfully invoked the event handler.
-                if state.handle_event(&cx, Event::Expose(&rects)).is_some() {
-                    gdi::ValidateRgn(hwnd, gdi::HRGN(0));
-                }
+                (state.handler)(&cx, Event::Expose(&rects));
+
+                gdi::ValidateRgn(hwnd, gdi::HRGN(0));
 
                 return Some(LRESULT(0));
             }
             msg::WM_MOUSEMOVE => {
                 if !state.mouse_in_window.get() {
                     state.mouse_in_window.set(true);
-                    state.handle_event(&cx, Event::MouseEnter);
+                    (state.handler)(&cx, Event::MouseEnter);
 
                     let _ = TrackMouseEvent(&mut TRACKMOUSEEVENT {
                         cbSize: mem::size_of::<TRACKMOUSEEVENT>() as u32,
@@ -183,13 +182,13 @@ pub unsafe extern "system" fn wnd_proc(
                 };
                 let point = point_physical.scale(state.scale().recip());
 
-                state.handle_event(&cx, Event::MouseMove(point));
+                (state.handler)(&cx, Event::MouseMove(point));
 
                 return Some(LRESULT(0));
             }
             WM_MOUSELEAVE => {
                 state.mouse_in_window.set(false);
-                state.handle_event(&cx, Event::MouseExit);
+                (state.handler)(&cx, Event::MouseExit);
             }
             msg::WM_LBUTTONDOWN
             | msg::WM_LBUTTONUP
@@ -241,7 +240,7 @@ pub unsafe extern "system" fn wnd_proc(
                             _ => {}
                         }
 
-                        if state.handle_event(&cx, event) == Some(Response::Capture) {
+                        if (state.handler)(&cx, event) == Response::Capture {
                             return Some(LRESULT(0));
                         }
                     }
@@ -255,12 +254,12 @@ pub unsafe extern "system" fn wnd_proc(
                     _ => unreachable!(),
                 };
 
-                if state.handle_event(&cx, Event::Scroll(point)) == Some(Response::Capture) {
+                if (state.handler)(&cx, Event::Scroll(point)) == Response::Capture {
                     return Some(LRESULT(0));
                 }
             }
             msg::WM_CLOSE => {
-                state.handle_event(&cx, Event::Close);
+                (state.handler)(&cx, Event::Close);
                 return Some(LRESULT(0));
             }
             msg::WM_DESTROY => {
@@ -300,7 +299,7 @@ pub struct WindowState {
     cursor: Cell<Cursor>,
     app: AppHandle,
     #[allow(clippy::type_complexity)]
-    handler: RefCell<Box<dyn FnMut(&WindowContext, Event) -> Response>>,
+    pub(crate) handler: Box<dyn Fn(&WindowContext, Event) -> Response>,
 }
 
 impl WindowState {
@@ -344,14 +343,6 @@ impl WindowState {
         }
     }
 
-    pub fn handle_event(&self, cx: &WindowContext, event: Event) -> Option<Response> {
-        if let Ok(mut handler) = self.handler.try_borrow_mut() {
-            return Some(handler(cx, event));
-        }
-
-        None
-    }
-
     pub fn close(&self) {
         if let Some(hwnd) = self.hwnd.take() {
             let _ = unsafe { DestroyWindow(hwnd) };
@@ -371,7 +362,7 @@ impl WindowInner {
 
     pub fn open<H>(options: &WindowOptions, app: &AppHandle, handler: H) -> Result<WindowInner>
     where
-        H: FnMut(&WindowContext, Event) -> Response + 'static,
+        H: Fn(&WindowContext, Event) -> Response + 'static,
     {
         if !app.inner.state.open.get() {
             return Err(Error::AppDropped);
@@ -450,7 +441,7 @@ impl WindowInner {
                 mouse_in_window: Cell::new(false),
                 cursor: Cell::new(Cursor::Arrow),
                 app: app.clone(),
-                handler: RefCell::new(Box::new(handler)),
+                handler: Box::new(handler),
             });
 
             let state_ptr = Rc::into_raw(Rc::clone(&state));

@@ -202,7 +202,7 @@ impl WindowOptions {
 
     pub fn open<H>(&self, app: &AppHandle, handler: H) -> Result<Window>
     where
-        H: FnMut(&WindowContext, Event) -> Response + 'static,
+        H: Fn(&WindowContext, Event) -> Response + 'static,
     {
         Ok(Window::from_inner(backend::WindowInner::open(
             self, app, handler,

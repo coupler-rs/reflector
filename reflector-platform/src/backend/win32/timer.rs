@@ -12,7 +12,7 @@ struct TimerState {
     timer_id: Cell<Option<usize>>,
     app_state: Rc<AppState>,
     #[allow(clippy::type_complexity)]
-    handler: RefCell<Box<dyn FnMut(&TimerContext)>>,
+    handler: Box<dyn Fn(&TimerContext)>,
 }
 
 impl TimerState {
@@ -43,7 +43,7 @@ impl Timers {
         handler: H,
     ) -> TimerInner
     where
-        H: FnMut(&TimerContext) + 'static,
+        H: Fn(&TimerContext) + 'static,
     {
         let timer_id = self.next_id.get();
         self.next_id.set(timer_id + 1);
@@ -51,7 +51,7 @@ impl Timers {
         let state = Rc::new(TimerState {
             timer_id: Cell::new(Some(timer_id)),
             app_state: Rc::clone(app_state),
-            handler: RefCell::new(Box::new(handler)),
+            handler: Box::new(handler),
         });
 
         self.timers.borrow_mut().insert(timer_id, Rc::clone(&state));
@@ -69,7 +69,7 @@ impl Timers {
         if let Some(timer_state) = timer_state {
             let timer = Timer::from_inner(TimerInner { state: timer_state });
             let cx = TimerContext::new(app, &timer);
-            timer.inner.state.handler.borrow_mut()(&cx);
+            (timer.inner.state.handler)(&cx);
         }
     }
 

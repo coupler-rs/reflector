@@ -150,7 +150,7 @@ impl AppInner {
 
     pub fn set_timer<H>(&self, duration: Duration, handler: H) -> Result<TimerInner>
     where
-        H: FnMut(&TimerContext) + 'static,
+        H: Fn(&TimerContext) + 'static,
     {
         if !self.state.open.get() {
             return Err(Error::AppDropped);
@@ -228,7 +228,7 @@ impl AppInner {
 
     fn handle_event(&self, window: &Window, event: Event) -> Response {
         let cx = WindowContext::new(&window.inner.state.app, window);
-        window.inner.state.handler.borrow_mut()(&cx, event)
+        (window.inner.state.handler)(&cx, event)
     }
 
     fn drain_events(&self) -> Result<()> {

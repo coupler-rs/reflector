@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::time::Duration;
 
 use reflector_platform::{App, Bitmap, Event, Response, Size, WindowContext, WindowOptions};
@@ -72,16 +73,18 @@ impl State {
 fn main() {
     let app = App::new().unwrap();
 
-    let mut state = State {
+    let state = RefCell::new(State {
         framebuffer: Vec::new(),
         width: 0,
         height: 0,
-    };
+    });
 
     let window = WindowOptions::new()
         .title("window")
         .size(Size::new(512.0, 512.0))
-        .open(app.handle(), move |cx, event| state.handle_event(cx, event))
+        .open(app.handle(), move |cx, event| {
+            state.borrow_mut().handle_event(cx, event)
+        })
         .unwrap();
 
     app.handle()

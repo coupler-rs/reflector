@@ -183,7 +183,7 @@ impl View {
         }
     }
 
-    pub fn handle_event(&self, event: Event) -> Option<Response> {
+    pub fn handle_event(&self, event: Event) -> Response {
         let state_rc = unsafe { Rc::from_raw(self.state_ivar().get() as *const WindowState) };
         let state = Rc::clone(&state_rc);
         let _ = Rc::into_raw(state_rc);
@@ -191,7 +191,7 @@ impl View {
         let window = Window::from_inner(WindowInner { state });
         let cx = WindowContext::new(&window.inner.state.app, &window);
 
-        window.inner.state.handle_event(&cx, event)
+        (window.inner.state.handler)(&cx, event)
     }
 
     pub fn retain(&self) -> Id<View> {
@@ -236,7 +236,7 @@ impl View {
         self.catch_unwind(|| {
             let result = self.handle_event(Event::MouseDown(MouseButton::Left));
 
-            if result != Some(Response::Capture) {
+            if result != Response::Capture {
                 let () = msg_send![super(self, NSView::class()), mouseDown: event];
             }
         });
@@ -246,7 +246,7 @@ impl View {
         self.catch_unwind(|| {
             let result = self.handle_event(Event::MouseUp(MouseButton::Left));
 
-            if result != Some(Response::Capture) {
+            if result != Response::Capture {
                 let () = msg_send![super(self, NSView::class()), mouseUp: event];
             }
         });
@@ -256,7 +256,7 @@ impl View {
         self.catch_unwind(|| {
             let result = self.handle_event(Event::MouseDown(MouseButton::Right));
 
-            if result != Some(Response::Capture) {
+            if result != Response::Capture {
                 let () = msg_send![super(self, NSView::class()), rightMouseDown: event];
             }
         });
@@ -266,7 +266,7 @@ impl View {
         self.catch_unwind(|| {
             let result = self.handle_event(Event::MouseUp(MouseButton::Right));
 
-            if result != Some(Response::Capture) {
+            if result != Response::Capture {
                 let () = msg_send![super(self, NSView::class()), rightMouseUp: event];
             }
         });
@@ -282,10 +282,10 @@ impl View {
             let result = if let Some(button) = mouse_button_from_number(button_number) {
                 self.handle_event(Event::MouseDown(button))
             } else {
-                None
+                Response::Ignore
             };
 
-            if result != Some(Response::Capture) {
+            if result != Response::Capture {
                 let () = msg_send![super(self, NSView::class()), otherMouseDown: event];
             }
         });
@@ -301,10 +301,10 @@ impl View {
             let result = if let Some(button) = mouse_button_from_number(button_number) {
                 self.handle_event(Event::MouseUp(button))
             } else {
-                None
+                Response::Ignore
             };
 
-            if result != Some(Response::Capture) {
+            if result != Response::Capture {
                 let () = msg_send![super(self, NSView::class()), otherMouseUp: event];
             }
         });
@@ -325,7 +325,7 @@ impl View {
             };
             let result = self.handle_event(Event::Scroll(delta));
 
-            if result != Some(Response::Capture) {
+            if result != Response::Capture {
                 let () = msg_send![super(self, NSView::class()), scrollWheel: event];
             }
         });
@@ -368,7 +368,7 @@ pub struct WindowState {
     surface: RefCell<Option<Surface>>,
     cursor: Cell<Cursor>,
     app: AppHandle,
-    handler: RefCell<Box<dyn FnMut(&WindowContext, Event) -> Response>>,
+    pub(crate) handler: Box<dyn Fn(&WindowContext, Event) -> Response>,
 }
 
 impl WindowState {
@@ -378,14 +378,6 @@ impl WindowState {
 
     pub fn window(&self) -> Option<Id<NSWindow>> {
         self.window.borrow().clone()
-    }
-
-    pub fn handle_event(&self, cx: &WindowContext, event: Event) -> Option<Response> {
-        if let Ok(mut handler) = self.handler.try_borrow_mut() {
-            return Some(handler(cx, event));
-        }
-
-        None
     }
 
     fn update_cursor(&self) {
@@ -447,7 +439,7 @@ impl WindowInner {
 
     pub fn open<H>(options: &WindowOptions, app: &AppHandle, handler: H) -> Result<WindowInner>
     where
-        H: FnMut(&WindowContext, Event) -> Response + 'static,
+        H: Fn(&WindowContext, Event) -> Response + 'static,
     {
         autoreleasepool(|_| {
             if !app.inner.state.open.get() {
@@ -478,7 +470,7 @@ impl WindowInner {
                 surface: RefCell::new(None),
                 cursor: Cell::new(Cursor::Arrow),
                 app: app.clone(),
-                handler: RefCell::new(Box::new(handler)),
+                handler: Box::new(handler),
             });
 
             let view: Allocated<View> = unsafe { msg_send_id![app_state.class, alloc] };

@@ -1,4 +1,5 @@
 use std::time::Duration;
+use std::cell::RefCell;
 
 use reflector_graphics::{Affine, Color, Font, Point, Renderer};
 use reflector_platform::{
@@ -156,12 +157,12 @@ fn main() {
 
     let app = App::new().unwrap();
 
-    let mut state = State::new(commands);
+    let state = RefCell::new(State::new(commands));
 
     let window = WindowOptions::new()
         .title("svg example")
         .size(Size::new(WIDTH as f64, HEIGHT as f64))
-        .open(app.handle(), move |cx, event| state.handle_event(cx, event))
+        .open(app.handle(), move |cx, event| state.borrow_mut().handle_event(cx, event))
         .unwrap();
 
     window.show();

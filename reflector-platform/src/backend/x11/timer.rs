@@ -13,7 +13,7 @@ struct TimerState {
     timer_id: TimerId,
     duration: Duration,
     app: AppHandle,
-    handler: RefCell<Box<dyn FnMut(&TimerContext)>>,
+    handler: Box<dyn Fn(&TimerContext)>,
 }
 
 #[derive(Clone)]
@@ -68,7 +68,7 @@ impl Timers {
         handler: H,
     ) -> TimerInner
     where
-        H: FnMut(&TimerContext) + 'static,
+        H: Fn(&TimerContext) + 'static,
     {
         let now = Instant::now();
 
@@ -79,7 +79,7 @@ impl Timers {
             timer_id,
             duration,
             app: AppHandle::from_inner(AppInner::from_state(Rc::clone(app_state))),
-            handler: RefCell::new(Box::new(handler)),
+            handler: Box::new(handler),
         });
 
         self.timers.borrow_mut().insert(timer_id, Rc::clone(&state));
@@ -104,7 +104,7 @@ impl Timers {
             if let Some(timer_state) = timer_state {
                 let timer = Timer::from_inner(TimerInner { state: timer_state });
                 let cx = TimerContext::new(&timer.inner.state.app, &timer);
-                timer.inner.state.handler.borrow_mut()(&cx);
+                (timer.inner.state.handler)(&cx);
 
                 // If we fall behind by more than one timer interval, reset the timer's phase
                 let next_time = (next.time + timer.inner.state.duration).max(now);
