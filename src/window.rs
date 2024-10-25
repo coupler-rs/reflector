@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use graphics::{Affine, Color, Renderer};
 use platform::{Bitmap, RawWindow, WindowContext};
 
@@ -130,10 +132,10 @@ impl WindowOptions {
     where
         E: Elem,
     {
-        let mut handler = Handler::new(root);
+        let handler = RefCell::new(Handler::new(root));
 
         let window = self.inner.open(app.inner.handle(), move |cx, event| {
-            handler.handle(cx, event)
+            handler.borrow_mut().handle(cx, event)
         })?;
 
         window.show();

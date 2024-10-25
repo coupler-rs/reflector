@@ -38,7 +38,7 @@ extern "C" fn callback(_timer: CFRunLoopTimerRef, info: *mut c_void) {
 
         let timer = Timer::from_inner(TimerInner { state });
         let cx = TimerContext::new(&timer.inner.state.app, &timer);
-        timer.inner.state.handler.borrow_mut()(&cx);
+        (timer.inner.state.handler)(&cx);
     }));
 
     if let Err(panic) = result {
@@ -50,7 +50,7 @@ extern "C" fn callback(_timer: CFRunLoopTimerRef, info: *mut c_void) {
 struct TimerState {
     timer_ref: Cell<Option<CFRunLoopTimerRef>>,
     app: AppHandle,
-    handler: RefCell<Box<dyn FnMut(&TimerContext)>>,
+    handler: Box<dyn Fn(&TimerContext)>,
 }
 
 impl TimerState {
@@ -82,12 +82,12 @@ impl Timers {
         handler: H,
     ) -> TimerInner
     where
-        H: FnMut(&TimerContext) + 'static,
+        H: Fn(&TimerContext) + 'static,
     {
         let state = Rc::new(TimerState {
             timer_ref: Cell::new(None),
             app: AppHandle::from_inner(AppInner::from_state(Rc::clone(app_state))),
-            handler: RefCell::new(Box::new(handler)),
+            handler: Box::new(handler),
         });
 
         let mut context = CFRunLoopTimerContext {
