@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use reflector_graphics::{Affine, Color, Font, Point, Renderer};
 use reflector_platform::{
-    App, Bitmap, Event, MouseButton, Response, Size, WindowContext, WindowOptions,
+    EventLoop, Bitmap, Event, MouseButton, Response, Size, WindowContext, WindowOptions,
 };
 
 const WIDTH: usize = 512;
@@ -140,7 +140,7 @@ impl State {
                 return Response::Capture;
             }
             Event::Close => {
-                cx.app().exit();
+                cx.event_loop().exit();
             }
             _ => {}
         }
@@ -154,17 +154,17 @@ fn main() {
     let path = path_arg.as_ref().map(|s| &s[..]).unwrap_or("examples/res/tiger.svg");
     let commands = svg::from_file(path).unwrap();
 
-    let app = App::new().unwrap();
+    let event_loop = EventLoop::new().unwrap();
 
     let mut state = State::new(commands);
 
     let window = WindowOptions::new()
         .title("svg example")
         .size(Size::new(WIDTH as f64, HEIGHT as f64))
-        .open(app.handle(), move |cx, event| state.handle_event(cx, event))
+        .open(event_loop.handle(), move |cx, event| state.handle_event(cx, event))
         .unwrap();
 
     window.show();
 
-    app.run().unwrap();
+    event_loop.run().unwrap();
 }

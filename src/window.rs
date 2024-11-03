@@ -47,7 +47,7 @@ impl<E: Elem> Handler<E> {
             }
             platform::Event::Close => {
                 cx.window().close();
-                cx.app().exit();
+                cx.event_loop().exit();
             }
             platform::Event::MouseExit => {
                 if self.hover {
